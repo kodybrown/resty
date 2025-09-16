@@ -1,0 +1,70 @@
+﻿<?xml version="1.0" encoding="utf-16"?>
+<testsuites xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema" tests="7" failures="1" time="1.777" timestamp="2025-09-16T00:19:05.7164963Z">
+  <testsuite name="api-tests" tests="5" failures="1" time="1.145" timestamp="2025-09-16T00:19:05.7164963Z">
+    <testcase classname="api-tests.GetTests" name="authenticated-request" time="0.002">
+      <failure message="Request failed: An invalid request URI was provided. Either the request URI must be an absolute URI or BaseAddress must be set." type="AssertionError">HTTP GET $base_url/protected
+Error: Request failed: An invalid request URI was provided. Either the request URI must be an absolute URI or BaseAddress must be set.</failure>
+      <system-out>Test: authenticated-request
+HTTP GET $base_url/protected
+Duration: 0.002s</system-out>
+    </testcase>
+    <testcase classname="api-tests.GetTests" name="custom-headers" time="0.069">
+      <system-out>Test: custom-headers
+HTTP GET https://httpbin.org/headers
+Duration: 0.069s
+Status Code: OK
+Request Headers:
+  X-Custom-Header: test-value
+  User-Agent: Resty-Test-Client/1.0</system-out>
+    </testcase>
+    <testcase classname="api-tests.GetTests" name="extract-response-data" time="0.077">
+      <system-out>Test: extract-response-data
+HTTP GET https://httpbin.org/json
+Duration: 0.077s
+Status Code: OK
+Extracted Variables:
+  slideshow_title: Sample Slide Show
+  author_name: Yours Truly</system-out>
+    </testcase>
+    <testcase classname="api-tests.GetTests" name="get-public-endpoint" time="0.389">
+      <system-out>Test: get-public-endpoint
+HTTP GET https://httpbin.org/get
+Duration: 0.389s
+Status Code: OK</system-out>
+    </testcase>
+    <testcase classname="api-tests.PostTests" name="post-with-json-body" time="0.608">
+      <system-out>Test: post-with-json-body
+HTTP POST https://httpbin.org/post
+Duration: 0.608s
+Status Code: OK
+Extracted Variables:
+  request_url: https://httpbin.org/post
+Request Body:
+{
+  "user": "test-user",
+  "action": "login"
+}</system-out>
+    </testcase>
+  </testsuite>
+  <testsuite name="sample-api" tests="2" failures="0" time="0.570" timestamp="2025-09-16T00:19:05.7164963Z">
+    <testcase classname="sample-api.PostTests" name="echo-test" time="0.068">
+      <system-out>Test: echo-test
+HTTP POST https://httpbin.org/anything
+Duration: 0.068s
+Status Code: OK
+Extracted Variables:
+  request_method: POST
+Request Body:
+{
+  "message": "Testing .rest extension",
+  "timestamp": "2025-01-01T00:00:00Z"
+}</system-out>
+    </testcase>
+    <testcase classname="sample-api.GetTests" name="simple-get" time="0.502">
+      <system-out>Test: simple-get
+HTTP GET https://httpbin.org/status/200
+Duration: 0.502s
+Status Code: OK</system-out>
+    </testcase>
+  </testsuite>
+</testsuites>

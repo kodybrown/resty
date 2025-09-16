@@ -1,0 +1,200 @@
+{
+  "summary": {
+    "totalTests": 7,
+    "passedTests": 6,
+    "failedTests": 1,
+    "skippedTests": 0,
+    "passRate": 85.71428571428571,
+    "duration": 0.9314207,
+    "startTime": "2025-09-16T00:18:54.5853479Z",
+    "endTime": "2025-09-16T00:18:55.5167686Z"
+  },
+  "results": [
+    {
+      "test": "get-public-endpoint",
+      "file": "C:\\Users\\kodyb\\WasatchWizard\\Resty\\examples\\api-tests.resty",
+      "method": "GET",
+      "url": "https://httpbin.org/get",
+      "status": "Passed",
+      "duration": 0.448077,
+      "statusCode": 200,
+      "errorMessage": null,
+      "extractedVariables": {},
+      "request": null,
+      "response": {
+        "headers": {
+          "Date": "Tue, 16 Sep 2025 00:18:54 GMT",
+          "Connection": "keep-alive",
+          "Server": "gunicorn/19.9.0",
+          "Access-Control-Allow-Origin": "*",
+          "Access-Control-Allow-Credentials": "true",
+          "Content-Type": "application/json",
+          "Content-Length": "200"
+        },
+        "body": "{\n  \u0022args\u0022: {}, \n  \u0022headers\u0022: {\n    \u0022Host\u0022: \u0022httpbin.org\u0022, \n    \u0022X-Amzn-Trace-Id\u0022: \u0022Root=1-68c8acee-060521ee53ad40440e2ac8fe\u0022\n  }, \n  \u0022origin\u0022: \u0022174.52.197.130\u0022, \n  \u0022url\u0022: \u0022https://httpbin.org/get\u0022\n}\n"
+      }
+    },
+    {
+      "test": "post-with-json-body",
+      "file": "C:\\Users\\kodyb\\WasatchWizard\\Resty\\examples\\api-tests.resty",
+      "method": "POST",
+      "url": "https://httpbin.org/post",
+      "status": "Passed",
+      "duration": 0.0662085,
+      "statusCode": 200,
+      "errorMessage": null,
+      "extractedVariables": {
+        "request_url": "https://httpbin.org/post"
+      },
+      "request": {
+        "headers": {},
+        "body": "{\n  \u0022user\u0022: \u0022test-user\u0022,\n  \u0022action\u0022: \u0022login\u0022\n}\n"
+      },
+      "response": {
+        "headers": {
+          "Date": "Tue, 16 Sep 2025 00:18:55 GMT",
+          "Connection": "keep-alive",
+          "Server": "gunicorn/19.9.0",
+          "Access-Control-Allow-Origin": "*",
+          "Access-Control-Allow-Credentials": "true",
+          "Content-Type": "application/json",
+          "Content-Length": "457"
+        },
+        "body": "{\n  \u0022args\u0022: {}, \n  \u0022data\u0022: \u0022{\\n  \\\u0022user\\\u0022: \\\u0022test-user\\\u0022,\\n  \\\u0022action\\\u0022: \\\u0022login\\\u0022\\n}\\n\u0022, \n  \u0022files\u0022: {}, \n  \u0022form\u0022: {}, \n  \u0022headers\u0022: {\n    \u0022Content-Length\u0022: \u002247\u0022, \n    \u0022Content-Type\u0022: \u0022application/json; charset=utf-8\u0022, \n    \u0022Host\u0022: \u0022httpbin.org\u0022, \n    \u0022X-Amzn-Trace-Id\u0022: \u0022Root=1-68c8acef-2547d10f14aa5f9620fd149d\u0022\n  }, \n  \u0022json\u0022: {\n    \u0022action\u0022: \u0022login\u0022, \n    \u0022user\u0022: \u0022test-user\u0022\n  }, \n  \u0022origin\u0022: \u0022174.52.197.130\u0022, \n  \u0022url\u0022: \u0022https://httpbin.org/post\u0022\n}\n"
+      }
+    },
+    {
+      "test": "extract-response-data",
+      "file": "C:\\Users\\kodyb\\WasatchWizard\\Resty\\examples\\api-tests.resty",
+      "method": "GET",
+      "url": "https://httpbin.org/json",
+      "status": "Passed",
+      "duration": 0.0669387,
+      "statusCode": 200,
+      "errorMessage": null,
+      "extractedVariables": {
+        "slideshow_title": "Sample Slide Show",
+        "author_name": "Yours Truly"
+      },
+      "request": null,
+      "response": {
+        "headers": {
+          "Date": "Tue, 16 Sep 2025 00:18:55 GMT",
+          "Connection": "keep-alive",
+          "Server": "gunicorn/19.9.0",
+          "Access-Control-Allow-Origin": "*",
+          "Access-Control-Allow-Credentials": "true",
+          "Content-Type": "application/json",
+          "Content-Length": "429"
+        },
+        "body": "{\n  \u0022slideshow\u0022: {\n    \u0022author\u0022: \u0022Yours Truly\u0022, \n    \u0022date\u0022: \u0022date of publication\u0022, \n    \u0022slides\u0022: [\n      {\n        \u0022title\u0022: \u0022Wake up to WonderWidgets!\u0022, \n        \u0022type\u0022: \u0022all\u0022\n      }, \n      {\n        \u0022items\u0022: [\n          \u0022Why \u003Cem\u003EWonderWidgets\u003C/em\u003E are great\u0022, \n          \u0022Who \u003Cem\u003Ebuys\u003C/em\u003E WonderWidgets\u0022\n        ], \n        \u0022title\u0022: \u0022Overview\u0022, \n        \u0022type\u0022: \u0022all\u0022\n      }\n    ], \n    \u0022title\u0022: \u0022Sample Slide Show\u0022\n  }\n}\n"
+      }
+    },
+    {
+      "test": "custom-headers",
+      "file": "C:\\Users\\kodyb\\WasatchWizard\\Resty\\examples\\api-tests.resty",
+      "method": "GET",
+      "url": "https://httpbin.org/headers",
+      "status": "Passed",
+      "duration": 0.0726408,
+      "statusCode": 200,
+      "errorMessage": null,
+      "extractedVariables": {},
+      "request": {
+        "headers": {
+          "X-Custom-Header": "test-value",
+          "User-Agent": "Resty-Test-Client/1.0"
+        },
+        "body": null
+      },
+      "response": {
+        "headers": {
+          "Date": "Tue, 16 Sep 2025 00:18:55 GMT",
+          "Connection": "keep-alive",
+          "Server": "gunicorn/19.9.0",
+          "Access-Control-Allow-Origin": "*",
+          "Access-Control-Allow-Credentials": "true",
+          "Content-Type": "application/json",
+          "Content-Length": "199"
+        },
+        "body": "{\n  \u0022headers\u0022: {\n    \u0022Host\u0022: \u0022httpbin.org\u0022, \n    \u0022User-Agent\u0022: \u0022Resty-Test-Client/1.0\u0022, \n    \u0022X-Amzn-Trace-Id\u0022: \u0022Root=1-68c8acef-6a0507fe536b5499265a6a5b\u0022, \n    \u0022X-Custom-Header\u0022: \u0022test-value\u0022\n  }\n}\n"
+      }
+    },
+    {
+      "test": "authenticated-request",
+      "file": "C:\\Users\\kodyb\\WasatchWizard\\Resty\\examples\\api-tests.resty",
+      "method": "GET",
+      "url": "$base_url/protected",
+      "status": "Failed",
+      "duration": 0.0017613,
+      "statusCode": null,
+      "errorMessage": "Request failed: An invalid request URI was provided. Either the request URI must be an absolute URI or BaseAddress must be set.",
+      "extractedVariables": {},
+      "request": null,
+      "response": null
+    },
+    {
+      "test": "simple-get",
+      "file": "C:\\Users\\kodyb\\WasatchWizard\\Resty\\examples\\sample-api.rest",
+      "method": "GET",
+      "url": "https://httpbin.org/status/200",
+      "status": "Passed",
+      "duration": 0.0665874,
+      "statusCode": 200,
+      "errorMessage": null,
+      "extractedVariables": {},
+      "request": null,
+      "response": {
+        "headers": {
+          "Date": "Tue, 16 Sep 2025 00:18:55 GMT",
+          "Connection": "keep-alive",
+          "Server": "gunicorn/19.9.0",
+          "Access-Control-Allow-Origin": "*",
+          "Access-Control-Allow-Credentials": "true",
+          "Content-Type": "text/html; charset=utf-8",
+          "Content-Length": "0"
+        },
+        "body": ""
+      }
+    },
+    {
+      "test": "echo-test",
+      "file": "C:\\Users\\kodyb\\WasatchWizard\\Resty\\examples\\sample-api.rest",
+      "method": "POST",
+      "url": "https://httpbin.org/anything",
+      "status": "Passed",
+      "duration": 0.1470022,
+      "statusCode": 200,
+      "errorMessage": null,
+      "extractedVariables": {
+        "request_method": "POST"
+      },
+      "request": {
+        "headers": {},
+        "body": "{\n  \u0022message\u0022: \u0022Testing .rest extension\u0022,\n  \u0022timestamp\u0022: \u00222025-01-01T00:00:00Z\u0022\n}\n"
+      },
+      "response": {
+        "headers": {
+          "Date": "Tue, 16 Sep 2025 00:18:55 GMT",
+          "Connection": "keep-alive",
+          "Server": "gunicorn/19.9.0",
+          "Access-Control-Allow-Origin": "*",
+          "Access-Control-Allow-Credentials": "true",
+          "Content-Type": "application/json",
+          "Content-Length": "552"
+        },
+        "body": "{\n  \u0022args\u0022: {}, \n  \u0022data\u0022: \u0022{\\n  \\\u0022message\\\u0022: \\\u0022Testing .rest extension\\\u0022,\\n  \\\u0022timestamp\\\u0022: \\\u00222025-01-01T00:00:00Z\\\u0022\\n}\\n\u0022, \n  \u0022files\u0022: {}, \n  \u0022form\u0022: {}, \n  \u0022headers\u0022: {\n    \u0022Content-Length\u0022: \u002282\u0022, \n    \u0022Content-Type\u0022: \u0022application/json; charset=utf-8\u0022, \n    \u0022Host\u0022: \u0022httpbin.org\u0022, \n    \u0022X-Amzn-Trace-Id\u0022: \u0022Root=1-68c8acef-215d4cfd512b450558d81ced\u0022\n  }, \n  \u0022json\u0022: {\n    \u0022message\u0022: \u0022Testing .rest extension\u0022, \n    \u0022timestamp\u0022: \u00222025-01-01T00:00:00Z\u0022\n  }, \n  \u0022method\u0022: \u0022POST\u0022, \n  \u0022origin\u0022: \u0022174.52.197.130\u0022, \n  \u0022url\u0022: \u0022https://httpbin.org/anything\u0022\n}\n"
+      }
+    }
+  ],
+  "metadata": {
+    "tool": "Resty",
+    "version": "1.0.0",
+    "timestamp": "2025-09-16T00:18:55.5465935Z",
+    "environment": {
+      "os": "Microsoft Windows NT 10.0.26100.0",
+      "runtime": ".NET 9.0.8",
+      "machine": "DUKE"
+    }
+  }
+}

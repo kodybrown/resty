@@ -1,0 +1,61 @@
+# Development notes
+**/Notes.md
+**/TODO.md
+**/NOTES.txt
+
+# Private/sensitive files
+#**/*.private.yaml
+#**/*.private.yml
+**/*.secrets.*
+**/appsettings.Development.json
+**/appsettings.Local.json
+
+# Build outputs
+[Bb]in/
+[Oo]bj/
+publish/
+
+# Visual Studio
+.vs/
+**/*.suo
+**/*.user
+**/*.userosscache
+**/*.sln.docstates
+
+# User-specific files
+**/*.rsuser
+**/*.suo
+**/*.user
+**/*.userosscache
+**/*.sln.docstates
+**/*.userprefs
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+[Dd]esktop.ini
+
+# Logs and temp files
+*.log
+*.tmp
+*.temp
+
+# Test results
+TestResults/
+[Tt]est[Rr]esult*/
+*.trx
+*.coverage
+*.coveragexml
+
+# NuGet
+packages/
+*.nupkg
+*.snupkg
+project.lock.json
+project.fragment.lock.json
+artifacts/

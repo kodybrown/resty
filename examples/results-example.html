@@ -1,0 +1,654 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Resty Test Results</title>
+    <style>
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+          Oxygen, Ubuntu, Cantarell, sans-serif;
+        margin: 0;
+        padding: 0;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        min-height: 100vh;
+        color: #333;
+      }
+
+      header {
+        background: rgba(255, 255, 255, 0.95);
+        backdrop-filter: blur(10px);
+        padding: 2rem;
+        text-align: center;
+        box-shadow: 0 2px 20px rgba(0, 0, 0, 0.1);
+      }
+
+      header h1 {
+        margin: 0;
+        font-size: 2.5rem;
+        font-weight: 300;
+        color: #333;
+      }
+
+      .timestamp {
+        color: #666;
+        font-size: 0.9rem;
+        margin-top: 0.5rem;
+      }
+
+      main {
+        max-width: 1200px;
+        margin: 0 auto;
+        padding: 2rem;
+      }
+
+      .dashboard {
+        margin-bottom: 2rem;
+      }
+
+      .summary-card {
+        background: white;
+        border-radius: 12px;
+        padding: 2rem;
+        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+        margin-bottom: 1rem;
+      }
+
+      .status-badge {
+        display: inline-block;
+        padding: 0.5rem 1rem;
+        border-radius: 25px;
+        font-weight: bold;
+        font-size: 0.9rem;
+        margin-bottom: 1.5rem;
+      }
+
+      .status-badge.passed {
+        background: #d4edda;
+        color: #155724;
+      }
+
+      .status-badge.failed {
+        background: #f8d7da;
+        color: #721c24;
+      }
+
+      .summary-stats {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+        gap: 1.5rem;
+      }
+
+      .stat {
+        text-align: center;
+      }
+
+      .stat-value {
+        display: block;
+        font-size: 2.5rem;
+        font-weight: bold;
+        margin-bottom: 0.5rem;
+      }
+
+      .stat-label {
+        color: #666;
+        font-size: 0.9rem;
+      }
+
+      .stat.passed .stat-value {
+        color: #28a745;
+      }
+      .stat.failed .stat-value {
+        color: #dc3545;
+      }
+
+      .progress-container {
+        background: white;
+        border-radius: 12px;
+        padding: 1rem;
+        box-shadow: 0 4px 16px rgba(0, 0, 0, 0.05);
+      }
+
+      .progress-bar {
+        background: #e9ecef;
+        border-radius: 10px;
+        height: 20px;
+        overflow: hidden;
+      }
+
+      .progress-fill {
+        background: linear-gradient(90deg, #28a745, #20c997);
+        height: 100%;
+        border-radius: 10px;
+        transition: width 0.3s ease;
+      }
+
+      .test-results {
+        background: white;
+        border-radius: 12px;
+        padding: 2rem;
+        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+        margin-bottom: 2rem;
+      }
+
+      .test-results h2 {
+        margin-top: 0;
+        color: #333;
+      }
+
+      .filters {
+        margin-bottom: 2rem;
+        display: flex;
+        gap: 0.5rem;
+      }
+
+      .filter-btn {
+        padding: 0.5rem 1rem;
+        border: 2px solid #dee2e6;
+        background: white;
+        border-radius: 6px;
+        cursor: pointer;
+        transition: all 0.2s;
+      }
+
+      .filter-btn:hover {
+        background: #f8f9fa;
+      }
+
+      .filter-btn.active {
+        background: #007bff;
+        color: white;
+        border-color: #007bff;
+      }
+
+      .test-file {
+        border: 1px solid #dee2e6;
+        border-radius: 8px;
+        margin-bottom: 1rem;
+        overflow: hidden;
+      }
+
+      .file-header {
+        background: #f8f9fa;
+        padding: 1rem;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        gap: 1rem;
+        transition: background-color 0.2s;
+      }
+
+      .file-header:hover {
+        background: #e9ecef;
+      }
+
+      .file-icon {
+        font-size: 1.2rem;
+      }
+
+      .file-name {
+        font-weight: bold;
+        flex: 1;
+      }
+
+      .file-stats {
+        display: flex;
+        gap: 1rem;
+        font-size: 0.9rem;
+      }
+
+      .file-stats .passed {
+        color: #28a745;
+      }
+      .file-stats .failed {
+        color: #dc3545;
+      }
+
+      .expand-icon {
+        transition: transform 0.2s;
+      }
+
+      .file-header.collapsed .expand-icon {
+        transform: rotate(-90deg);
+      }
+
+      .file-path {
+        background: #f8f9fa;
+        padding: 0.5rem 1rem;
+        font-size: 0.85rem;
+        color: #666;
+        font-family: monospace;
+      }
+
+      .test-list {
+        display: block;
+        transition: max-height 0.3s ease;
+      }
+
+      .test-list.collapsed {
+        display: none;
+      }
+
+      .test-item {
+        padding: 1rem;
+        border-top: 1px solid #dee2e6;
+      }
+
+      .test-item.hidden {
+        display: none;
+      }
+
+      .test-header {
+        display: flex;
+        align-items: center;
+        gap: 1rem;
+        margin-bottom: 0.5rem;
+      }
+
+      .test-icon {
+        font-size: 1.1rem;
+      }
+
+      .test-name {
+        font-weight: bold;
+        flex: 1;
+      }
+
+      .test-method {
+        background: #e9ecef;
+        padding: 0.25rem 0.5rem;
+        border-radius: 4px;
+        font-size: 0.8rem;
+        font-family: monospace;
+      }
+
+      .test-duration {
+        color: #666;
+        font-size: 0.9rem;
+      }
+
+      .test-url {
+        color: #666;
+        font-size: 0.9rem;
+        font-family: monospace;
+        margin-bottom: 0.5rem;
+        word-break: break-all;
+      }
+
+      .test-error {
+        background: #f8d7da;
+        color: #721c24;
+        padding: 0.75rem;
+        border-radius: 6px;
+        margin: 0.5rem 0;
+        font-size: 0.9rem;
+      }
+
+      .status-code {
+        display: inline-block;
+        padding: 0.25rem 0.5rem;
+        border-radius: 4px;
+        font-size: 0.8rem;
+        font-family: monospace;
+        margin: 0.5rem 0;
+      }
+
+      .status-code.success {
+        background: #d4edda;
+        color: #155724;
+      }
+
+      .status-code.error {
+        background: #f8d7da;
+        color: #721c24;
+      }
+
+      .extracted-vars {
+        background: #f8f9fa;
+        padding: 0.75rem;
+        border-radius: 6px;
+        margin: 0.5rem 0;
+        font-size: 0.9rem;
+      }
+
+      .extracted-vars ul {
+        margin: 0.5rem 0 0 0;
+        padding-left: 1.5rem;
+      }
+
+      .extracted-vars code {
+        background: #e9ecef;
+        padding: 0.125rem 0.25rem;
+        border-radius: 3px;
+        font-size: 0.85rem;
+      }
+
+      .request-body {
+        margin: 0.5rem 0;
+      }
+
+      .request-body pre {
+        background: #f8f9fa;
+        padding: 0.75rem;
+        border-radius: 6px;
+        overflow-x: auto;
+        font-size: 0.85rem;
+        margin: 0.5rem 0;
+      }
+
+      .metadata {
+        background: white;
+        border-radius: 12px;
+        padding: 2rem;
+        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+      }
+
+      .metadata h3 {
+        margin-top: 0;
+        color: #333;
+      }
+
+      .metadata-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+        gap: 1rem;
+      }
+
+      .metadata-item {
+        padding: 0.5rem 0;
+      }
+
+      .metadata-item .label {
+        font-weight: bold;
+        color: #666;
+      }
+
+      @media (max-width: 768px) {
+        main {
+          padding: 1rem;
+        }
+
+        .summary-stats {
+          grid-template-columns: repeat(2, 1fr);
+        }
+
+        .test-header {
+          flex-direction: column;
+          align-items: stretch;
+          gap: 0.5rem;
+        }
+
+        .file-stats {
+          flex-direction: column;
+          gap: 0.25rem;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>🚀 Resty Test Results</h1>
+      <div class="timestamp">Generated: 2025-09-15 18:21:47</div>
+    </header>
+    <main>
+      <section class="dashboard">
+        <div class="summary-card failed">
+          <div class="status-badge failed">FAILED</div>
+          <div class="summary-stats">
+            <div class="stat">
+              <span class="stat-value">7</span>
+              <span class="stat-label">Total Tests</span>
+            </div>
+            <div class="stat passed">
+              <span class="stat-value">6</span>
+              <span class="stat-label">Passed</span>
+            </div>
+            <div class="stat failed">
+              <span class="stat-value">1</span>
+              <span class="stat-label">Failed</span>
+            </div>
+            <div class="stat">
+              <span class="stat-value">85.7%</span>
+              <span class="stat-label">Pass Rate</span>
+            </div>
+            <div class="stat">
+              <span class="stat-value">1.4s</span>
+              <span class="stat-label">Duration</span>
+            </div>
+          </div>
+        </div>
+        <div class="progress-container">
+          <div class="progress-bar">
+            <div class="progress-fill" style="width: 85.7%"></div>
+          </div>
+        </div>
+      </section>
+
+      <section class="test-results">
+        <h2>Test Results</h2>
+        <div class="filters">
+          <button class="filter-btn active" onclick="filterTests('all')">
+            All
+          </button>
+          <button class="filter-btn" onclick="filterTests('passed')">
+            Passed
+          </button>
+          <button class="filter-btn" onclick="filterTests('failed')">
+            Failed
+          </button>
+        </div>
+        <div class="test-file">
+          <div class="file-header" onclick="toggleFile('api-tests.resty')">
+            <span class="file-icon">📁</span>
+            <span class="file-name">api-tests.resty</span>
+            <span class="file-stats">
+              <span class="passed">4 passed</span>
+              <span class="failed">1 failed</span>
+            </span>
+            <span class="expand-icon">▼</span>
+          </div>
+          <div class="file-path">
+            C:\Users\kodyb\WasatchWizard\Resty\examples\api-tests.resty
+          </div>
+          <div class="test-list" id="api-tests.resty-tests">
+            <div class="test-item failed" data-status="failed">
+              <div class="test-header">
+                <span class="test-icon">❌</span>
+                <span class="test-name">authenticated-request</span>
+                <span class="test-method">GET</span>
+                <span class="test-duration">0.002s</span>
+              </div>
+              <div class="test-url">$base_url/protected</div>
+              <div class="test-error">
+                <strong>Error:</strong> Request failed: An invalid request URI
+                was provided. Either the request URI must be an absolute URI or
+                BaseAddress must be set.
+              </div>
+            </div>
+            <div class="test-item passed" data-status="passed">
+              <div class="test-header">
+                <span class="test-icon">✅</span>
+                <span class="test-name">custom-headers</span>
+                <span class="test-method">GET</span>
+                <span class="test-duration">0.090s</span>
+              </div>
+              <div class="test-url">https://httpbin.org/headers</div>
+              <div class="status-code success">HTTP 200 OK</div>
+            </div>
+            <div class="test-item passed" data-status="passed">
+              <div class="test-header">
+                <span class="test-icon">✅</span>
+                <span class="test-name">extract-response-data</span>
+                <span class="test-method">GET</span>
+                <span class="test-duration">0.068s</span>
+              </div>
+              <div class="test-url">https://httpbin.org/json</div>
+              <div class="status-code success">HTTP 200 OK</div>
+              <div class="extracted-vars">
+                <strong>Extracted Variables:</strong>
+                <ul>
+                  <li><code>slideshow_title</code>: Sample Slide Show</li>
+                  <li><code>author_name</code>: Yours Truly</li>
+                </ul>
+              </div>
+            </div>
+            <div class="test-item passed" data-status="passed">
+              <div class="test-header">
+                <span class="test-icon">✅</span>
+                <span class="test-name">get-public-endpoint</span>
+                <span class="test-method">GET</span>
+                <span class="test-duration">0.345s</span>
+              </div>
+              <div class="test-url">https://httpbin.org/get</div>
+              <div class="status-code success">HTTP 200 OK</div>
+            </div>
+            <div class="test-item passed" data-status="passed">
+              <div class="test-header">
+                <span class="test-icon">✅</span>
+                <span class="test-name">post-with-json-body</span>
+                <span class="test-method">POST</span>
+                <span class="test-duration">0.071s</span>
+              </div>
+              <div class="test-url">https://httpbin.org/post</div>
+              <div class="status-code success">HTTP 200 OK</div>
+              <div class="extracted-vars">
+                <strong>Extracted Variables:</strong>
+                <ul>
+                  <li><code>request_url</code>: https://httpbin.org/post</li>
+                </ul>
+              </div>
+              <div class="request-body">
+                <strong>Request Body:</strong>
+                <pre><code>{
+  &quot;user&quot;: &quot;test-user&quot;,
+  &quot;action&quot;: &quot;login&quot;
+}
+</code></pre>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="test-file">
+          <div class="file-header" onclick="toggleFile('sample-api.rest')">
+            <span class="file-icon">📁</span>
+            <span class="file-name">sample-api.rest</span>
+            <span class="file-stats">
+              <span class="passed">2 passed</span>
+            </span>
+            <span class="expand-icon">▼</span>
+          </div>
+          <div class="file-path">
+            C:\Users\kodyb\WasatchWizard\Resty\examples\sample-api.rest
+          </div>
+          <div class="test-list" id="sample-api.rest-tests">
+            <div class="test-item passed" data-status="passed">
+              <div class="test-header">
+                <span class="test-icon">✅</span>
+                <span class="test-name">echo-test</span>
+                <span class="test-method">POST</span>
+                <span class="test-duration">0.693s</span>
+              </div>
+              <div class="test-url">https://httpbin.org/anything</div>
+              <div class="status-code success">HTTP 200 OK</div>
+              <div class="extracted-vars">
+                <strong>Extracted Variables:</strong>
+                <ul>
+                  <li><code>request_method</code>: POST</li>
+                </ul>
+              </div>
+              <div class="request-body">
+                <strong>Request Body:</strong>
+                <pre><code>{
+  &quot;message&quot;: &quot;Testing .rest extension&quot;,
+  &quot;timestamp&quot;: &quot;2025-01-01T00:00:00Z&quot;
+}
+</code></pre>
+              </div>
+            </div>
+            <div class="test-item passed" data-status="passed">
+              <div class="test-header">
+                <span class="test-icon">✅</span>
+                <span class="test-name">simple-get</span>
+                <span class="test-method">GET</span>
+                <span class="test-duration">0.074s</span>
+              </div>
+              <div class="test-url">https://httpbin.org/status/200</div>
+              <div class="status-code success">HTTP 200 OK</div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="metadata">
+        <h3>Test Run Information</h3>
+        <div class="metadata-grid">
+          <div class="metadata-item">
+            <span class="label">Tool:</span> Resty v1.0.0
+          </div>
+          <div class="metadata-item">
+            <span class="label">Start Time:</span> 2025-09-16 00:21:46 UTC
+          </div>
+          <div class="metadata-item">
+            <span class="label">End Time:</span> 2025-09-16 00:21:47 UTC
+          </div>
+          <div class="metadata-item">
+            <span class="label">Runtime:</span> .NET 9.0.8
+          </div>
+          <div class="metadata-item">
+            <span class="label">OS:</span> Microsoft Windows NT 10.0.26100.0
+          </div>
+          <div class="metadata-item">
+            <span class="label">Machine:</span> DUKE
+          </div>
+        </div>
+      </section>
+    </main>
+    <script>
+      function filterTests(status) {
+        // Update active filter button
+        document.querySelectorAll(".filter-btn").forEach((btn) => {
+          btn.classList.remove("active");
+        });
+        event.target.classList.add("active");
+
+        // Show/hide test items
+        document.querySelectorAll(".test-item").forEach((item) => {
+          if (status === "all") {
+            item.classList.remove("hidden");
+          } else {
+            if (item.dataset.status === status) {
+              item.classList.remove("hidden");
+            } else {
+              item.classList.add("hidden");
+            }
+          }
+        });
+      }
+
+      function toggleFile(fileName) {
+        const header = event.currentTarget;
+        const testList = document.getElementById(fileName + "-tests");
+
+        if (testList.classList.contains("collapsed")) {
+          testList.classList.remove("collapsed");
+          header.classList.remove("collapsed");
+        } else {
+          testList.classList.add("collapsed");
+          header.classList.add("collapsed");
+        }
+      }
+
+      // Initialize - expand all files by default
+      document.addEventListener("DOMContentLoaded", function () {
+        // Add click handlers and expand all files
+        document.querySelectorAll(".file-header").forEach((header) => {
+          header.classList.remove("collapsed");
+        });
+      });
+    </script>
+  </body>
+</html>

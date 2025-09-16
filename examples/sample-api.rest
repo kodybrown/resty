@@ -1,0 +1,23 @@
+# Sample API Tests
+
+This demonstrates using the `.rest` extension as an alternative to `.resty`.
+
+## Quick Tests
+
+```yaml
+test: simple-get
+get: https://httpbin.org/status/200
+```
+
+```yaml
+test: echo-test
+post: https://httpbin.org/anything
+body: |
+  {
+    "message": "Testing .rest extension",
+    "timestamp": "2025-01-01T00:00:00Z"
+  }
+success:
+  # Extract the HTTP method from the response using JSONPath
+  request_method: $.method
+```

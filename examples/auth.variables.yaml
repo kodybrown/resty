@@ -1,0 +1,3 @@
+variables:
+  host: http://localhost:5114
+  admin_username: admin

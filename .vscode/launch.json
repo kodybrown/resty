@@ -1,0 +1,45 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Resty",
+      "type": "coreclr",
+      "request": "launch",
+      "preLaunchTask": "Build Resty",
+      "program": "${env:TEMP}/_dotnet/Resty/bin/Debug/net9.0/Resty.exe",
+      "args": [],
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal",
+      "stopAtEntry": false,
+      "env": {}
+    },
+    {
+      "name": "Resty '--version'",
+      "type": "coreclr",
+      "request": "launch",
+      "preLaunchTask": "Build Resty",
+      "program": "${env:TEMP}/_dotnet/Resty/bin/Debug/net9.0/Resty.exe",
+      "args": ["--version"],
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal",
+      "stopAtEntry": false
+    },
+    {
+      "name": "Resty '--help'",
+      "type": "coreclr",
+      "request": "launch",
+      "preLaunchTask": "Build Resty",
+      "program": "${env:TEMP}/_dotnet/Resty/bin/Debug/net9.0/Resty.exe",
+      "args": ["--help"],
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal",
+      "stopAtEntry": false
+    },
+    {
+      "name": "Attach to Resty Process",
+      "type": "coreclr",
+      "request": "attach",
+      "processName": "Resty"
+    }
+  ]
+}

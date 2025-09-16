@@ -1,0 +1,73 @@
+=== TEST RESULTS ===
+
+Total Tests: 7
+Passed: 6 (8,571.4%)
+Failed: 1
+Skipped: 0
+Duration: 0.86s
+Start Time: 2025-09-16 00:18:46
+End Time: 2025-09-16 00:18:47
+
+=== C:\Users\kodyb\WasatchWizard\Resty\examples\api-tests.resty ===
+
+Test: authenticated-request
+  Status: Failed
+  Method: GET
+  URL: $base_url/protected
+  Duration: 0.002s
+  Error: Request failed: An invalid request URI was provided. Either the request URI must be an absolute URI or BaseAddress must be set.
+
+Test: custom-headers
+  Status: Passed
+  Method: GET
+  URL: https://httpbin.org/headers
+  Duration: 0.075s
+  Status Code: OK
+
+Test: extract-response-data
+  Status: Passed
+  Method: GET
+  URL: https://httpbin.org/json
+  Duration: 0.069s
+  Status Code: OK
+  Extracted Variables:
+    slideshow_title: Sample Slide Show
+    author_name: Yours Truly
+
+Test: get-public-endpoint
+  Status: Passed
+  Method: GET
+  URL: https://httpbin.org/get
+  Duration: 0.344s
+  Status Code: OK
+
+Test: post-with-json-body
+  Status: Passed
+  Method: POST
+  URL: https://httpbin.org/post
+  Duration: 0.160s
+  Status Code: OK
+  Extracted Variables:
+    request_url: https://httpbin.org/post
+
+=== C:\Users\kodyb\WasatchWizard\Resty\examples\sample-api.rest ===
+
+Test: echo-test
+  Status: Passed
+  Method: POST
+  URL: https://httpbin.org/anything
+  Duration: 0.069s
+  Status Code: OK
+  Extracted Variables:
+    request_method: POST
+
+Test: simple-get
+  Status: Passed
+  Method: GET
+  URL: https://httpbin.org/status/200
+  Duration: 0.072s
+  Status Code: OK
+
+=== SUMMARY ===
+RESULT: FAILED
+Total: 7, Passed: 6, Failed: 1

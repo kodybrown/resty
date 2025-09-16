@@ -1,0 +1,10 @@
+# Set default behavior to automatically normalize line endings.
+* text=auto eol=lf
+
+# Force CRLF line-endings.
+*.bat      eol=crlf
+*.BAT      eol=crlf
+*.cmd      eol=crlf
+*.CMD      eol=crlf
+*.ps1      eol=crlf
+*.PS1      eol=crlf

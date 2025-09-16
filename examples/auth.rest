@@ -1,0 +1,27 @@
+# Auth Example
+
+```yaml
+include:
+  - variables.yaml
+  - variables.private.yaml
+```
+
+```yaml
+test: auth
+post: $host/api/auth
+body: |
+  {
+    "Username": "$admin_username",
+    "Password": "$admin_password"
+  }
+success:
+  # Capture the token from the response (via JSONPath)
+  # and store it in a variable for use in subsequent requests.
+  token: $.result.token
+```
+
+```yaml
+test: verify_token
+get: $host/api/something-protected
+authorization: Bearer $token
+```

@@ -1,0 +1,5 @@
+# This file would normally be in .gitignore
+# and contain sensitive information that should not be shared.
+# It is included here for demonstration purposes only.
+variables:
+  admin_password: THIS IS SUPER SECRET!!

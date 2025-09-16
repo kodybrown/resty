@@ -1,0 +1,61 @@
+# API Tests Example
+
+This is an example Resty test file using the `.resty` extension.
+
+## Authentication Tests
+
+```yaml
+test: get-public-endpoint
+get: https://httpbin.org/get
+```
+
+```yaml
+test: post-with-json-body
+post: https://httpbin.org/post
+content-type: application/json
+body: |
+  {
+    "user": "test-user",
+    "action": "login"
+  }
+success:
+  # Extract the URL for use in later tests  
+  request_url: $.url
+```
+
+## Data Extraction Tests
+
+```yaml
+test: extract-response-data
+get: https://httpbin.org/json
+success:
+  # Extract values from the JSON response using JSONPath
+  slideshow_title: $.slideshow.title
+  author_name: $.slideshow.author
+```
+
+## Header Tests
+
+```yaml
+test: custom-headers
+get: https://httpbin.org/headers
+headers:
+  X-Custom-Header: test-value
+  User-Agent: Resty-Test-Client/1.0
+```
+
+## Environment Variables
+
+You can use environment variables in your tests:
+
+```yaml
+variables:
+  base_url: $env:API_BASE_URL
+  api_key: $env:API_KEY
+
+test: authenticated-request
+get: $base_url/protected
+authorization: Bearer $api_key
+```
+
+This demonstrates the new `.resty` file format with full markdown syntax highlighting in VSCode!
