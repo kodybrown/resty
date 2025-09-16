@@ -1,6 +1,7 @@
 namespace Resty;
 
 using Resty.Core.Execution;
+using Resty.Core.Exceptions;
 using Resty.Core.Models;
 using Resty.Core.Output;
 using System.Text;
@@ -247,6 +248,8 @@ internal class Program : Resty.Helpers.ConsoleApplication
     Console.WriteLine("    0    All tests passed");
     Console.WriteLine("    1    One or more tests failed");
     Console.WriteLine("    2    Internal error or invalid configuration");
+    Console.WriteLine("    3    Missing test dependency");
+    Console.WriteLine("    4    Circular test dependency detected");
   }
 
   private void ShowVersion()
@@ -305,6 +308,18 @@ internal class Program : Resty.Helpers.ConsoleApplication
 
       // Step 7: Return appropriate exit code
       return results.HasFailures ? 1 : 0;
+    } catch (MissingDependencyException mdx) {
+      Console.WriteLine($"Error: {mdx.Message}");
+      if (OptVerbose) {
+        Console.WriteLine(mdx.ToString());
+      }
+      return 3;
+    } catch (CircularDependencyException cdx) {
+      Console.WriteLine($"Error: {cdx.Message}");
+      if (OptVerbose) {
+        Console.WriteLine(cdx.ToString());
+      }
+      return 4;
     } catch (Exception ex) {
       Console.WriteLine($"Error: {ex.Message}");
       if (OptVerbose) {

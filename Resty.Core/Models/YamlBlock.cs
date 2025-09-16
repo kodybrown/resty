@@ -91,6 +91,12 @@ public record YamlBlock
   public int? Timeout { get; init; }
 
   /// <summary>
+  /// List of test names this test depends on. These tests must run successfully before this test runs.
+  /// Can be a single test name string or an array of test names.
+  /// </summary>
+  public List<string>? Requires { get; init; }
+
+  /// <summary>
   /// Determines if this block represents an HTTP test.
   /// A test must have a test name and exactly one HTTP method.
   /// </summary>

@@ -19,22 +19,6 @@
         "reveal": "silent"
       },
       "problemMatcher": "$msCompile"
-    },
-    {
-      "label": "Build and Deploy Resty",
-      "type": "shell",
-      "command": "pwsh",
-      "args": [
-        "-c",
-        "if (!(Test-Path \"$env:UserProfile/Bin\")) { New-Item -ItemType Directory -Path \"$env:UserProfile/Bin\" -Force | Out-Null }; Copy-Item \"$env:TEMP/_dotnet/Resty.Cli/bin/Debug/net9.0/resty.exe\" \"$env:UserProfile/Bin/resty.exe\" -Force; Write-Host \"Successfully deployed resty.exe to $env:UserProfile/Bin\""
-      ],
-      "dependsOn": "Build Resty",
-      "group": "build",
-      "presentation": {
-        "reveal": "always",
-        "panel": "shared"
-      },
-      "problemMatcher": []
     }
   ]
 }

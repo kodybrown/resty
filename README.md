@@ -420,20 +420,84 @@ success:
 
 ### Test Dependencies
 
-Tests run in file order, allowing you to chain requests:
+Resty supports explicit test dependencies using the `requires` property.
+When a test has dependencies, those dependencies are automatically run first:
 
 ```yaml
-# Test 1: Login
+# Test 1: Login (no dependencies)
 test: login
 post: /auth/login
 success:
   token: $.access_token
 
-# Test 2: Use token from Test 1
+# Test 2: Requires login test to run first
 test: protected-endpoint
+requires: login
 get: /api/protected
 authorization: Bearer $token
 ```
+
+#### Single Dependency
+
+```yaml
+test: get-profile
+requires: login
+get: /api/profile
+authorization: Bearer $token
+```
+
+#### Multiple Dependencies
+
+```yaml
+test: update-profile
+requires:
+  - login
+  - get-profile
+put: /api/profile
+authorization: Bearer $token
+body: |
+  {
+    "name": "Updated Name"
+  }
+```
+
+#### Dependency Chain
+
+Dependencies can form chains - Resty automatically resolves the correct execution order:
+
+```yaml
+test: login
+post: /auth/login
+success:
+  token: $.access_token
+
+test: get-profile
+requires: login
+get: /api/profile
+authorization: Bearer $token
+success:
+  user_id: $.id
+
+test: update-profile
+requires: get-profile  # This will run login → get-profile → update-profile
+put: /api/profile
+authorization: Bearer $token
+```
+
+#### Running Specific Tests
+
+When you run a specific test, its dependencies are automatically included:
+
+```bash
+# This will run 'login' first, then 'update-profile'
+resty test.rest -t update-profile
+```
+
+#### Error Handling
+
+- **Missing dependency**: Exit code 3 if a required test doesn't exist
+- **Circular dependency**: Exit code 4 if tests form a dependency loop
+- **Dependency failure**: If a dependency test fails, dependent tests are skipped
 
 ### Recursive Directory Search
 
@@ -495,6 +559,8 @@ Resty/
 - **0** - All tests passed
 - **1** - One or more tests failed
 - **2** - Internal error or invalid configuration
+- **3** - Missing test dependency
+- **4** - Circular test dependency detected
 
 ## Development
 

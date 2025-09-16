@@ -15,11 +15,11 @@ public class ConsoleOutputFormatter : IOutputFormatter
     Console.WriteLine();
 
     // Summary statistics
-    Console.WriteLine($"**Total Tests:** {summary.TotalTests}  ");
-    Console.WriteLine($"**Passed:** {summary.PassedTests} ({summary.PassRate:P1})  ");
-    Console.WriteLine($"**Failed:** {summary.FailedTests}  ");
-    Console.WriteLine($"**Skipped:** {summary.SkippedTests}  ");
-    Console.WriteLine($"**Duration:** `{summary.TotalDuration.TotalSeconds:F2}s`  ");
+    Console.WriteLine($"**Total Tests**: {summary.TotalTests}  ");
+    Console.WriteLine($"**Passed**: {summary.PassedTests} ({summary.PassRate:P1})  ");
+    Console.WriteLine($"**Failed**: {summary.FailedTests}  ");
+    Console.WriteLine($"**Skipped**: {summary.SkippedTests}  ");
+    Console.WriteLine($"**Duration**: `{summary.TotalDuration.TotalSeconds:F2}s`  ");
     Console.WriteLine();
     Console.WriteLine("## Results by File");
     Console.WriteLine();
@@ -39,16 +39,16 @@ public class ConsoleOutputFormatter : IOutputFormatter
 
         if (verbose) {
           Console.WriteLine();
-          Console.WriteLine($"  - **Method:** {result.Test.Method}");
-          Console.WriteLine($"  - **URL:** `{result.RequestInfo?.Url ?? result.Test.Url}`");
-          Console.WriteLine($"  - **Duration:** `{result.Duration.TotalSeconds:F3}s`");
+          Console.WriteLine($"  - **Method**: {result.Test.Method}");
+          Console.WriteLine($"  - **URL**: `{result.RequestInfo?.Url ?? result.Test.Url}`");
+          Console.WriteLine($"  - **Duration**: `{result.Duration.TotalSeconds:F3}s`");
 
           if (result.StatusCode.HasValue) {
-            Console.WriteLine($"  - **Status Code:** `{result.StatusCode}`");
+            Console.WriteLine($"  - **Status Code**: `{result.StatusCode}`");
           }
 
           if (result.ExtractedVariables?.Count > 0) {
-            Console.WriteLine($"  - **Extracted Variables:**");
+            Console.WriteLine($"  - **Extracted Variables**:");
             foreach (var variable in result.ExtractedVariables) {
               Console.WriteLine($"    - `{variable.Key}`: {variable.Value}");
             }
@@ -62,11 +62,11 @@ public class ConsoleOutputFormatter : IOutputFormatter
         // Show error details for failed tests
         if (result.Status == TestStatus.Failed && !string.IsNullOrEmpty(result.ErrorMessage)) {
           var fileLink = CreateFileLink(result);
-          Console.WriteLine($"  > **Error:** {fileLink}");
+          Console.WriteLine($"  > **Error**: {fileLink}");
 
           // Show available variables in verbose mode for debugging
           if (verbose && result.VariableSnapshot.Count > 0) {
-            Console.WriteLine($"  - **Available Variables:**");
+            Console.WriteLine($"  - **Available Variables**:");
             foreach (var (name, (value, source)) in result.VariableSnapshot.OrderBy(kvp => kvp.Key)) {
               Console.WriteLine($"    - `{name}`: {value} *(from {source})*");
             }
@@ -94,7 +94,7 @@ public class ConsoleOutputFormatter : IOutputFormatter
     }
 
     Console.WriteLine();
-    Console.WriteLine($"**Result:** {summary.PassedTests}/{summary.TotalTests} passed in `{summary.TotalDuration.TotalSeconds:F2}s`");
+    Console.WriteLine($"**Result**: {summary.PassedTests}/{summary.TotalTests} passed in `{summary.TotalDuration.TotalSeconds:F2}s`");
     Console.WriteLine();
   }
 
@@ -195,9 +195,7 @@ public class ConsoleOutputFormatter : IOutputFormatter
       var lineNumber = result.Test.SourceLine;
 
       return $"[{errorMessage} (line {lineNumber})]({fileUri}#{lineNumber})";
-    }
-    catch
-    {
+    } catch {
       // Fallback if file path processing fails
       return result.ErrorMessage ?? "Unknown error";
     }
