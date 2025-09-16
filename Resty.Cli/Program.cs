@@ -31,6 +31,7 @@ internal class Program : Resty.Helpers.ConsoleApplication
   private int OptParallelCount { get; set; } = 1;
   private int OptTestTimeoutSeconds { get; set; } = 30;
   private bool OptTestTimeoutWasSet { get; set; } = false; // Tracks if OptTestTimeoutSeconds was explicitly set by user
+  private bool OptColor { get; set; } = true; // Default to true (enable colors)
 
   /* Program */
 
@@ -171,6 +172,11 @@ internal class Program : Resty.Helpers.ConsoleApplication
             OptRecursive = found ? value : true; // Default to true if flag is present
             continue;
           }
+          case "color" or "c": {
+            i = GetSubArgument<bool>(args, i, out var found, out var value);
+            OptColor = found ? value : true; // Default to true if flag is present
+            continue;
+          }
         }
 
         Console.WriteLine($"Unknown argument: {arg}");
@@ -224,6 +230,7 @@ internal class Program : Resty.Helpers.ConsoleApplication
     Console.WriteLine("OUTPUT:");
     Console.WriteLine("    -o, --output <FORMAT>   Output format: text (default), json, xml, html");
     Console.WriteLine("    -s, --save <FILE>       Save results to file");
+    Console.WriteLine("    -c, --color <BOOL>      Enable colored console output (default: true)");
     Console.WriteLine();
     Console.WriteLine("VALIDATION:");
     Console.WriteLine("    --dry-run               Validate test files without executing");
@@ -243,6 +250,7 @@ internal class Program : Resty.Helpers.ConsoleApplication
     Console.WriteLine("    resty -l                        # List all available tests");
     Console.WriteLine("    resty --dry-run                 # Validate without running");
     Console.WriteLine("    resty -o json -s results.json   # Save JSON results to file");
+    Console.WriteLine("    resty --color false             # Disable colored output");
     Console.WriteLine();
     Console.WriteLine("EXIT CODES:");
     Console.WriteLine("    0    All tests passed");
@@ -430,7 +438,7 @@ internal class Program : Resty.Helpers.ConsoleApplication
   {
     var formatter = CreateOutputFormatter();
 
-    formatter.FormatAndWrite(results, OptVerbose);
+    formatter.FormatAndWrite(results, OptVerbose, OptColor);
 
     if (!string.IsNullOrEmpty(OptSaveFile)) {
       await formatter.SaveAsync(results, OptSaveFile);

@@ -12,7 +12,8 @@ public interface IOutputFormatter
   /// </summary>
   /// <param name="summary">The test run summary to format.</param>
   /// <param name="verbose">Whether to include verbose output.</param>
-  void FormatAndWrite( TestRunSummary summary, bool verbose = false );
+  /// <param name="useColors">Whether to use colored console output.</param>
+  void FormatAndWrite( TestRunSummary summary, bool verbose = false, bool useColors = true );
 
   /// <summary>
   /// Saves the test results to a file.

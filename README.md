@@ -243,6 +243,7 @@ resty -o html -s report.html    # HTML report saved to file
 resty --timeout 60              # Set request timeout in seconds
 resty --recursive false         # Search only top-level directory
 resty --parallel 4              # Parallel execution (future)
+resty --color false             # Disable colored console output
 resty -v -o json -s full.json   # Verbose JSON output to file
 resty -o html -s report.html    # Interactive HTML report
 ```

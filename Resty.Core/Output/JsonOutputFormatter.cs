@@ -13,7 +13,7 @@ public class JsonOutputFormatter : IOutputFormatter
     PropertyNamingPolicy = JsonNamingPolicy.CamelCase
   };
 
-  public void FormatAndWrite( TestRunSummary summary, bool verbose = false )
+  public void FormatAndWrite( TestRunSummary summary, bool verbose = false, bool useColors = true )
   {
     var jsonOutput = ConvertToJsonModel(summary, verbose);
     var json = JsonSerializer.Serialize(jsonOutput, JsonOptions);

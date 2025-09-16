@@ -1,6 +1,7 @@
 namespace Resty.Core.Output;
 
 using System.Text;
+using Resty.Core.Helpers;
 using Resty.Core.Models;
 
 /// <summary>
@@ -8,20 +9,18 @@ using Resty.Core.Models;
 /// </summary>
 public class ConsoleOutputFormatter : IOutputFormatter
 {
-  public void FormatAndWrite( TestRunSummary summary, bool verbose = false )
+  public void FormatAndWrite( TestRunSummary summary, bool verbose = false, bool useColors = true )
   {
+    var s = new StringBuilder();
+
     Console.WriteLine();
-    Console.WriteLine("# Test Results");
+    WriteColored("# Test Results", ConsoleColors.Heading1, useColors);
+    Console.WriteLine();
     Console.WriteLine();
 
-    // Summary statistics
-    Console.WriteLine($"**Total Tests**: {summary.TotalTests}  ");
-    Console.WriteLine($"**Passed**: {summary.PassedTests} ({summary.PassRate:P1})  ");
-    Console.WriteLine($"**Failed**: {summary.FailedTests}  ");
-    Console.WriteLine($"**Skipped**: {summary.SkippedTests}  ");
-    Console.WriteLine($"**Duration**: `{summary.TotalDuration.TotalSeconds:F2}s`  ");
+    // Results by file
+    WriteColored("## Results by File", ConsoleColors.Heading2, useColors);
     Console.WriteLine();
-    Console.WriteLine("## Results by File");
     Console.WriteLine();
 
     // Group results by file for better organization
@@ -29,35 +28,35 @@ public class ConsoleOutputFormatter : IOutputFormatter
 
     foreach (var fileGroup in resultsByFile) {
       var fileName = Path.GetFileName(fileGroup.Key);
-      Console.WriteLine($"### File: {fileName}");
+      WriteColored($"### File: {fileName}", ConsoleColors.Heading3, useColors);
+      Console.WriteLine();
       Console.WriteLine();
 
       foreach (var result in fileGroup.OrderBy(r => r.Test.Name)) {
-        var statusIcon = GetStatusIcon(result.Status);
+        var (statusIcon, statusColor) = GetStatusIconAndColor(result.Status);
 
-        Console.Write($"- {statusIcon} **{result.Test.Name}**");
+        Console.Write("- ");
+        WriteColored(statusIcon, statusColor, useColors);
 
         if (verbose) {
-          Console.WriteLine();
-          Console.WriteLine($"  - **Method**: {result.Test.Method}");
-          Console.WriteLine($"  - **URL**: `{result.RequestInfo?.Url ?? result.Test.Url}`");
-          Console.WriteLine($"  - **Duration**: `{result.Duration.TotalSeconds:F3}s`");
-
+          Console.WriteLine($" {result.Test.Name}");
+          Console.WriteLine($"  - Method:   '{result.Test.Method}'");
+          Console.WriteLine($"  - URL:      '{result.RequestInfo?.Url ?? result.Test.Url}'");
+          Console.WriteLine($"  - Duration: '{result.Duration.TotalSeconds:F3}s'");
           if (result.StatusCode.HasValue) {
-            Console.WriteLine($"  - **Status Code**: `{result.StatusCode}`");
+            Console.WriteLine($"  - Status:   '{result.StatusCode}'");
           }
-
           if (result.ExtractedVariables?.Count > 0) {
-            Console.WriteLine($"  - **Extracted Variables**:");
+            Console.WriteLine($"  - Variables: ");
             foreach (var variable in result.ExtractedVariables) {
-              Console.WriteLine($"    - `{variable.Key}`: {variable.Value}");
+              Console.WriteLine($"    - '{variable.Key}': '{variable.Value}'");
             }
           }
         } else {
-          Console.Write($" `({result.Duration.TotalSeconds:F3}s)`");
+          Console.Write($" {result.Test.Name} ");
+          WriteColored($"({result.Duration.TotalSeconds:F3}s)", ConsoleColors.TimeDuration, useColors);
+          Console.WriteLine();
         }
-
-        Console.WriteLine();
 
         // Show error details for failed tests
         if (result.Status == TestStatus.Failed && !string.IsNullOrEmpty(result.ErrorMessage)) {
@@ -66,9 +65,9 @@ public class ConsoleOutputFormatter : IOutputFormatter
 
           // Show available variables in verbose mode for debugging
           if (verbose && result.VariableSnapshot.Count > 0) {
-            Console.WriteLine($"  - **Available Variables**:");
+            Console.WriteLine($"  - Available Variables:");
             foreach (var (name, (value, source)) in result.VariableSnapshot.OrderBy(kvp => kvp.Key)) {
-              Console.WriteLine($"    - `{name}`: {value} *(from {source})*");
+              Console.WriteLine($"    - `{name}`: `{value}`  _(from {source})_");
             }
           }
         }
@@ -82,19 +81,26 @@ public class ConsoleOutputFormatter : IOutputFormatter
     }
 
     // Final summary
-    Console.WriteLine("---");
+    WriteColored("## Summary", ConsoleColors.Heading2, useColors);
     Console.WriteLine();
-    Console.WriteLine("## Summary");
     Console.WriteLine();
+
+    // var stats = $"{summary.PassedTests}/{summary.TotalTests} passed in '{summary.TotalDuration.TotalSeconds:F2}s'";
 
     if (summary.HasFailures) {
-      Console.WriteLine("**TESTS FAILED**");
+      WriteColored($"**TESTS FAILED**", ConsoleColors.Error, useColors);
     } else {
-      Console.WriteLine("**ALL TESTS PASSED**");
+      WriteColored($"**ALL TESTS PASSED**", ConsoleColors.Success, useColors);
     }
-
     Console.WriteLine();
-    Console.WriteLine($"**Result**: {summary.PassedTests}/{summary.TotalTests} passed in `{summary.TotalDuration.TotalSeconds:F2}s`");
+    Console.WriteLine();
+
+    Console.WriteLine($"Passed:   {summary.PassedTests} ({summary.PassRate:P1})");
+    Console.WriteLine($"Failed:   {summary.FailedTests}  ");
+    Console.WriteLine($"Skipped:  {summary.SkippedTests}  ");
+    Console.WriteLine($"Duration: {summary.TotalDuration.TotalSeconds:F2} seconds");
+    Console.WriteLine($"Total:    {summary.TotalTests}  ");
+    // Console.WriteLine($"Result:      {summary.PassedTests}/{summary.TotalTests} passed in '{summary.TotalDuration.TotalSeconds:F2}s'");
     Console.WriteLine();
   }
 
@@ -158,28 +164,23 @@ public class ConsoleOutputFormatter : IOutputFormatter
     return sb.ToString();
   }
 
-  private static string GetStatusIcon( TestStatus status )
+  private static (string text, ConsoleColor color) GetStatusIconAndColor( TestStatus status )
   {
     return status switch {
-      TestStatus.Passed => "[PASS]",
-      TestStatus.Failed => "[FAIL]",
-      TestStatus.Skipped => "[SKIP]",
-      _ => "[????]"
+      TestStatus.Passed => ("[PASS]", ConsoleColors.Passed),
+      TestStatus.Failed => ("[FAIL]", ConsoleColors.Failed),
+      TestStatus.Skipped => ("[SKIP]", ConsoleColors.Skipped),
+      _ => ("[????]", System.ConsoleColor.Gray)
     };
   }
 
-  private static ConsoleColor GetStatusColor( TestStatus status )
+  private static void WriteColored( string text, System.ConsoleColor color, bool useColors )
   {
-    return status switch {
-      TestStatus.Passed => ConsoleColor.Green,
-      TestStatus.Failed => ConsoleColor.Red,
-      TestStatus.Skipped => ConsoleColor.Yellow,
-      _ => ConsoleColor.White
-    };
-  }
+    if (!useColors || Console.IsOutputRedirected) {
+      Console.Write(text);
+      return;
+    }
 
-  private static void WriteColored( string text, ConsoleColor color )
-  {
     var originalColor = Console.ForegroundColor;
     Console.ForegroundColor = color;
     Console.Write(text);

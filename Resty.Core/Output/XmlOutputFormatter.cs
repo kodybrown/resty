@@ -10,7 +10,7 @@ using Resty.Core.Models;
 /// </summary>
 public class XmlOutputFormatter : IOutputFormatter
 {
-  public void FormatAndWrite( TestRunSummary summary, bool verbose = false )
+  public void FormatAndWrite( TestRunSummary summary, bool verbose = false, bool useColors = true )
   {
     var xml = ConvertToXmlString(summary);
     Console.WriteLine(xml);

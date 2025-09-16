@@ -53,7 +53,13 @@ public record TestRunSummary
   /// <summary>
   /// Pass rate as a percentage (0-100).
   /// </summary>
-  public double PassRate => TotalTests == 0 ? 0 : (PassedTests * 100.0) / TotalTests;
+  public double PassRate {
+    get {
+      return TotalTests <= 0 || PassedTests < 0 || PassedTests > TotalTests
+        ? 0.0
+        : Math.Round((double)PassedTests / (TotalTests - SkippedTests), 2);
+    }
+  }
 
   /// <summary>
   /// Determines if all tests passed.

@@ -8,7 +8,7 @@ using Resty.Core.Models;
 /// </summary>
 public class HtmlOutputFormatter : IOutputFormatter
 {
-  public void FormatAndWrite( TestRunSummary summary, bool verbose = false )
+  public void FormatAndWrite( TestRunSummary summary, bool verbose = false, bool useColors = true )
   {
     var html = GenerateHtml(summary, verbose);
     Console.WriteLine(html);
