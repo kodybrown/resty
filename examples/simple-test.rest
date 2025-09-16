@@ -1,0 +1,6 @@
+# Simple Test
+
+```yaml
+test: simple_test
+get: https://httpbin.org/get
+```

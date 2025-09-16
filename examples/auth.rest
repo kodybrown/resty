@@ -2,8 +2,8 @@
 
 ```yaml
 include:
-  - variables.yaml
-  - variables.private.yaml
+  - auth.variables.yaml
+  - auth.variables.private.yaml
 test: auth
 post: $host/api/auth
 body: |

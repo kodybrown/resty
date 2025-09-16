@@ -103,7 +103,7 @@ public static class MarkdownParser
       return yamlBlock;
     } catch (Exception ex) {
       throw new InvalidOperationException(
-        $"Failed to parse YAML block at line {lineNumber} in file '{filePath}': {ex.Message}", ex);
+        $"Failed to parse YAML block at line {lineNumber} in file '{filePath}': {ex.GetType().Name}: {ex.Message}", ex);
     }
   }
 

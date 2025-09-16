@@ -1,9 +1,12 @@
 namespace Resty.Core.Models;
 
+using System.Diagnostics.CodeAnalysis;
+
 /// <summary>
 /// Unified model for all YAML code blocks found in Markdown files.
 /// Can represent variable definitions, includes, or HTTP test definitions.
 /// </summary>
+[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicProperties | DynamicallyAccessedMemberTypes.PublicConstructors)]
 public record YamlBlock
 {
   /// <summary>

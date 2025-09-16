@@ -1,0 +1,6 @@
+# Minimal Test
+
+```yaml
+test: minimal
+get: https://httpbin.org/get
+```

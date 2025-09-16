@@ -2,7 +2,7 @@
 
 pushd "%~dp0"
 
-dotnet publish Resty.Cli/Resty.Cli.csproj -c Release -r win-x64 --self-contained true /p:PublishSingleFile=true /p:PublishTrimmed=true -o ./publish/
+dotnet publish Resty.Cli/Resty.Cli.csproj -c Release -r win-x64 --self-contained true /p:PublishSingleFile=true /p:PublishTrimmed=false -o ./publish/
 
 if %ERRORLEVEL% EQU 0 (
   echo.
