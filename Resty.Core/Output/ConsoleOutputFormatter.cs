@@ -29,12 +29,12 @@ public class ConsoleOutputFormatter : IOutputFormatter
 
     foreach (var fileGroup in resultsByFile) {
       var fileName = Path.GetFileName(fileGroup.Key);
-      Console.WriteLine($"### 📁 {fileName}");
+      Console.WriteLine($"### File: {fileName}");
       Console.WriteLine();
 
       foreach (var result in fileGroup.OrderBy(r => r.Test.Name)) {
         var statusIcon = GetStatusIcon(result.Status);
-        
+
         Console.Write($"- {statusIcon} **{result.Test.Name}**");
 
         if (verbose) {
@@ -88,9 +88,9 @@ public class ConsoleOutputFormatter : IOutputFormatter
     Console.WriteLine();
 
     if (summary.HasFailures) {
-      Console.WriteLine("❌ **TESTS FAILED**");
+      Console.WriteLine("**TESTS FAILED**");
     } else {
-      Console.WriteLine("✅ **ALL TESTS PASSED**");
+      Console.WriteLine("**ALL TESTS PASSED**");
     }
 
     Console.WriteLine();
@@ -161,10 +161,10 @@ public class ConsoleOutputFormatter : IOutputFormatter
   private static string GetStatusIcon( TestStatus status )
   {
     return status switch {
-      TestStatus.Passed => "✅",
-      TestStatus.Failed => "❌",
-      TestStatus.Skipped => "⏭️",
-      _ => "❓"
+      TestStatus.Passed => "[PASS]",
+      TestStatus.Failed => "[FAIL]",
+      TestStatus.Skipped => "[SKIP]",
+      _ => "[????]"
     };
   }
 
@@ -193,7 +193,7 @@ public class ConsoleOutputFormatter : IOutputFormatter
       var fileUri = new Uri(fullPath).ToString();
       var errorMessage = result.ErrorMessage ?? "Unknown error";
       var lineNumber = result.Test.SourceLine;
-      
+
       return $"[{errorMessage} (line {lineNumber})]({fileUri}#{lineNumber})";
     }
     catch
