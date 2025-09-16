@@ -3,6 +3,7 @@ namespace Resty;
 using Resty.Core.Execution;
 using Resty.Core.Models;
 using Resty.Core.Output;
+using System.Text;
 
 public enum OutputFormats { Text = 0, Json = 1, Xml = 2, Html = 3 }
 
@@ -12,6 +13,10 @@ internal class Program : Resty.Helpers.ConsoleApplication
 
   public static async Task<int> Main( string[] arguments )
     => await new Program().Run(arguments);
+
+  /* Command-line Arguments */
+
+  private List<string> args = [];
 
   private bool OptDryRun { get; set; } = false;
   private bool OptList { get; set; } = false;
@@ -28,11 +33,9 @@ internal class Program : Resty.Helpers.ConsoleApplication
 
   /* Program */
 
-  private List<string> args = [];
-
   public async Task<int> Run( string[] arguments )
   {
-    // Console.OutputEncoding = Encoding.UTF8;
+    Console.OutputEncoding = Encoding.UTF8;
 
     args.AddRange(arguments);
 
@@ -53,7 +56,7 @@ internal class Program : Resty.Helpers.ConsoleApplication
     return await RunTestsAsync();
   }
 
-  /* CLI Arguments */
+  /* Command-line Arguments Parsing */
 
   private int ParseArguments( string[] arguments )
   {
