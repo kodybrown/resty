@@ -11,68 +11,65 @@ public class ConsoleOutputFormatter : IOutputFormatter
   public void FormatAndWrite( TestRunSummary summary, bool verbose = false )
   {
     Console.WriteLine();
-    Console.WriteLine("═══════════════════════════════════════════════════════════════════");
-    Console.WriteLine("                          TEST RESULTS");
-    Console.WriteLine("═══════════════════════════════════════════════════════════════════");
+    Console.WriteLine("# Test Results");
     Console.WriteLine();
 
     // Summary statistics
-    Console.WriteLine($"Total Tests:    {summary.TotalTests}");
-    Console.WriteLine($"Passed:         {summary.PassedTests} ({summary.PassRate:P1})");
-    Console.WriteLine($"Failed:         {summary.FailedTests}");
-    Console.WriteLine($"Skipped:        {summary.SkippedTests}");
-    Console.WriteLine($"Duration:       {summary.TotalDuration.TotalSeconds:F2}s");
+    Console.WriteLine($"**Total Tests:** {summary.TotalTests}  ");
+    Console.WriteLine($"**Passed:** {summary.PassedTests} ({summary.PassRate:P1})  ");
+    Console.WriteLine($"**Failed:** {summary.FailedTests}  ");
+    Console.WriteLine($"**Skipped:** {summary.SkippedTests}  ");
+    Console.WriteLine($"**Duration:** `{summary.TotalDuration.TotalSeconds:F2}s`  ");
+    Console.WriteLine();
+    Console.WriteLine("## Results by File");
     Console.WriteLine();
 
     // Group results by file for better organization
     var resultsByFile = summary.Results.GroupBy(r => r.Test.SourceFile).ToList();
 
     foreach (var fileGroup in resultsByFile) {
-      Console.WriteLine($"📁 {Path.GetFileName(fileGroup.Key)}");
-      Console.WriteLine($"   {fileGroup.Key}");
+      var fileName = Path.GetFileName(fileGroup.Key);
+      Console.WriteLine($"### 📁 {fileName}");
       Console.WriteLine();
 
       foreach (var result in fileGroup.OrderBy(r => r.Test.Name)) {
         var statusIcon = GetStatusIcon(result.Status);
-        var statusColor = GetStatusColor(result.Status);
-
-        Console.Write($"  {statusIcon} ");
-        WriteColored(result.Test.Name, statusColor);
+        
+        Console.Write($"- {statusIcon} **{result.Test.Name}**");
 
         if (verbose) {
           Console.WriteLine();
-          Console.WriteLine($"     Method: {result.Test.Method}");
-          Console.WriteLine($"     URL: {result.RequestInfo?.Url ?? result.Test.Url}");
-          Console.WriteLine($"     Duration: {result.Duration.TotalSeconds:F3}s");
+          Console.WriteLine($"  - **Method:** {result.Test.Method}");
+          Console.WriteLine($"  - **URL:** `{result.RequestInfo?.Url ?? result.Test.Url}`");
+          Console.WriteLine($"  - **Duration:** `{result.Duration.TotalSeconds:F3}s`");
 
           if (result.StatusCode.HasValue) {
-            Console.WriteLine($"     Status Code: {result.StatusCode}");
+            Console.WriteLine($"  - **Status Code:** `{result.StatusCode}`");
           }
 
           if (result.ExtractedVariables?.Count > 0) {
-            Console.WriteLine("     Extracted Variables:");
+            Console.WriteLine($"  - **Extracted Variables:**");
             foreach (var variable in result.ExtractedVariables) {
-              Console.WriteLine($"       {variable.Key}: {variable.Value}");
+              Console.WriteLine($"    - `{variable.Key}`: {variable.Value}");
             }
           }
         } else {
-          Console.Write($" ({result.Duration.TotalSeconds:F3}s)");
+          Console.Write($" `({result.Duration.TotalSeconds:F3}s)`");
         }
 
         Console.WriteLine();
 
         // Show error details for failed tests
         if (result.Status == TestStatus.Failed && !string.IsNullOrEmpty(result.ErrorMessage)) {
-          WriteColored($"     Error: {result.ErrorMessage}", ConsoleColor.Red);
-          Console.WriteLine();
+          var fileLink = CreateFileLink(result);
+          Console.WriteLine($"  > **Error:** {fileLink}");
 
           // Show available variables in verbose mode for debugging
           if (verbose && result.VariableSnapshot.Count > 0) {
-            Console.WriteLine("     Available Variables:");
+            Console.WriteLine($"  - **Available Variables:**");
             foreach (var (name, (value, source)) in result.VariableSnapshot.OrderBy(kvp => kvp.Key)) {
-              Console.WriteLine($"       {name}: {value} (from {source})");
+              Console.WriteLine($"    - `{name}`: {value} *(from {source})*");
             }
-            Console.WriteLine();
           }
         }
 
@@ -85,16 +82,19 @@ public class ConsoleOutputFormatter : IOutputFormatter
     }
 
     // Final summary
-    Console.WriteLine("═══════════════════════════════════════════════════════════════════");
+    Console.WriteLine("---");
+    Console.WriteLine();
+    Console.WriteLine("## Summary");
+    Console.WriteLine();
 
     if (summary.HasFailures) {
-      WriteColored("❌ TESTS FAILED", ConsoleColor.Red);
+      Console.WriteLine("❌ **TESTS FAILED**");
     } else {
-      WriteColored("✅ ALL TESTS PASSED", ConsoleColor.Green);
+      Console.WriteLine("✅ **ALL TESTS PASSED**");
     }
 
-    Console.WriteLine($" ({summary.PassedTests}/{summary.TotalTests} passed in {summary.TotalDuration.TotalSeconds:F2}s)");
-    Console.WriteLine("═══════════════════════════════════════════════════════════════════");
+    Console.WriteLine();
+    Console.WriteLine($"**Result:** {summary.PassedTests}/{summary.TotalTests} passed in `{summary.TotalDuration.TotalSeconds:F2}s`");
     Console.WriteLine();
   }
 
@@ -184,5 +184,22 @@ public class ConsoleOutputFormatter : IOutputFormatter
     Console.ForegroundColor = color;
     Console.Write(text);
     Console.ForegroundColor = originalColor;
+  }
+
+  private static string CreateFileLink( TestResult result )
+  {
+    try {
+      var fullPath = Path.GetFullPath(result.Test.SourceFile);
+      var fileUri = new Uri(fullPath).ToString();
+      var errorMessage = result.ErrorMessage ?? "Unknown error";
+      var lineNumber = result.Test.SourceLine;
+      
+      return $"[{errorMessage} (line {lineNumber})]({fileUri}#{lineNumber})";
+    }
+    catch
+    {
+      // Fallback if file path processing fails
+      return result.ErrorMessage ?? "Unknown error";
+    }
   }
 }
