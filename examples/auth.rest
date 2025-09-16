@@ -4,9 +4,6 @@
 include:
   - variables.yaml
   - variables.private.yaml
-```
-
-```yaml
 test: auth
 post: $host/api/auth
 body: |
@@ -22,6 +19,7 @@ success:
 
 ```yaml
 test: verify_token
+depends_on: auth
 get: $host/api/something-protected
 authorization: Bearer $token
 ```
