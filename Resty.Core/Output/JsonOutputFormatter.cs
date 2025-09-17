@@ -13,14 +13,14 @@ public class JsonOutputFormatter : IOutputFormatter
     PropertyNamingPolicy = JsonNamingPolicy.CamelCase
   };
 
-  public void FormatAndWrite( TestRunSummary summary, bool verbose = false, bool useColors = true )
+  public void WriteToConsole( TestRunSummary summary, bool verbose = false, bool useColors = true )
   {
     var jsonOutput = ConvertToJsonModel(summary, verbose);
     var json = JsonSerializer.Serialize(jsonOutput, JsonOptions);
     Console.WriteLine(json);
   }
 
-  public async Task SaveAsync( TestRunSummary summary, string filePath )
+  public async Task SaveToFileAsync( TestRunSummary summary, string filePath, bool verbose = false )
   {
     var jsonOutput = ConvertToJsonModel(summary, verbose: true); // Always include full details when saving
     var json = JsonSerializer.Serialize(jsonOutput, JsonOptions);

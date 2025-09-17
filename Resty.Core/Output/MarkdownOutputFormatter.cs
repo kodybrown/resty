@@ -5,9 +5,9 @@ using Resty.Core.Helpers;
 using Resty.Core.Models;
 
 /// <summary>
-/// Formats test results for console output.
+/// Formats test results for Markdown output.
 /// </summary>
-public class ConsoleOutputFormatter : IOutputFormatter
+public class MarkdownOutputFormatter : IOutputFormatter
 {
   public void WriteToConsole( TestRunSummary summary, bool verbose = false, bool useColors = true )
   {
@@ -47,11 +47,12 @@ public class ConsoleOutputFormatter : IOutputFormatter
     var h2 = ConsoleColors.Heading2.ToColorVariable();
     var h3 = ConsoleColors.Heading3.ToColorVariable();
 
-    s.Append(h1).Append("===========================\n")
-     .Append(h1).Append("==                       ==\n")
-     .Append(h1).Append("==      Test Results     ==\n")
-     .Append(h1).Append("==                       ==\n")
-     .Append(h1).Append("===========================\n")
+    s.Append(h1).Append("# Test Results\n")
+    //  .Append(h1).Append("========================================\n")
+     .Append('\n');
+
+    s.Append(h2).Append("## Per File Results\n")
+    //  .Append(h2).Append("----------------------------------------\n")
      .Append('\n');
 
     // Results by file
@@ -61,7 +62,7 @@ public class ConsoleOutputFormatter : IOutputFormatter
     foreach (var fileGroup in resultsByFile) {
       var fileName = Path.GetFileName(fileGroup.Key);
 
-      s.Append(h3).Append($"== File: {fileName} ==\n")
+      s.Append(h3).Append($"### File: {fileName}\n")
        .Append('\n');
 
       foreach (var result in fileGroup.OrderBy(r => r.Test.Name)) {
@@ -119,9 +120,8 @@ public class ConsoleOutputFormatter : IOutputFormatter
     }
 
     // Final summary
-    s.Append(h2).Append("===========================\n")
-     .Append(h2).Append("==        Summary        ==\n")
-     .Append(h2).Append("===========================\n")
+    s.Append(h2).Append("## Summary\n")
+    //  .Append(h2).Append("----------------------------------------\n")
      .Append('\n');
 
     // var stats = $"{summary.PassedTests}/{summary.TotalTests} passed in '{summary.TotalDuration.TotalSeconds:F2}s'";

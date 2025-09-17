@@ -6,7 +6,7 @@ using Resty.Core.Models;
 using Resty.Core.Output;
 using System.Text;
 
-public enum OutputFormats { Text = 0, Json = 1, Xml = 2, Html = 3 }
+public enum OutputFormats { Text = 0, Markdown, Json, Xml, Html }
 
 internal class Program : Resty.Helpers.ConsoleApplication
 {
@@ -125,6 +125,9 @@ internal class Program : Resty.Helpers.ConsoleApplication
               switch (value.ToLower()) {
                 case "text" or "txt":
                   OptOutputFormat = OutputFormats.Text;
+                  break;
+                case "markdown" or "md":
+                  OptOutputFormat = OutputFormats.Markdown;
                   break;
                 case "json" or "jsn":
                   OptOutputFormat = OutputFormats.Json;
@@ -438,10 +441,10 @@ internal class Program : Resty.Helpers.ConsoleApplication
   {
     var formatter = CreateOutputFormatter();
 
-    formatter.FormatAndWrite(results, OptVerbose, OptColor);
+    formatter.WriteToConsole(results, OptVerbose, OptColor);
 
     if (!string.IsNullOrEmpty(OptSaveFile)) {
-      await formatter.SaveAsync(results, OptSaveFile);
+      await formatter.SaveToFileAsync(results, OptSaveFile);
       Console.WriteLine($"Results saved to: {OptSaveFile}");
     }
   }
@@ -449,6 +452,7 @@ internal class Program : Resty.Helpers.ConsoleApplication
   private IOutputFormatter CreateOutputFormatter()
   {
     return OptOutputFormat switch {
+      OutputFormats.Markdown => new MarkdownOutputFormatter(),
       OutputFormats.Json => new JsonOutputFormatter(),
       OutputFormats.Xml => new XmlOutputFormatter(),
       OutputFormats.Html => new HtmlOutputFormatter(),

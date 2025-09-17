@@ -13,7 +13,7 @@ public interface IOutputFormatter
   /// <param name="summary">The test run summary to format.</param>
   /// <param name="verbose">Whether to include verbose output.</param>
   /// <param name="useColors">Whether to use colored console output.</param>
-  void FormatAndWrite( TestRunSummary summary, bool verbose = false, bool useColors = true );
+  void WriteToConsole( TestRunSummary summary, bool verbose = false, bool useColors = true );
 
   /// <summary>
   /// Saves the test results to a file.
@@ -21,5 +21,5 @@ public interface IOutputFormatter
   /// <param name="summary">The test run summary to save.</param>
   /// <param name="filePath">The file path to save to.</param>
   /// <returns>A task representing the asynchronous save operation.</returns>
-  Task SaveAsync( TestRunSummary summary, string filePath );
+  Task SaveToFileAsync( TestRunSummary summary, string filePath, bool verbose = false );
 }

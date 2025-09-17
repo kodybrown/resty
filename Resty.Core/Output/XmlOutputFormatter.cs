@@ -10,13 +10,13 @@ using Resty.Core.Models;
 /// </summary>
 public class XmlOutputFormatter : IOutputFormatter
 {
-  public void FormatAndWrite( TestRunSummary summary, bool verbose = false, bool useColors = true )
+  public void WriteToConsole( TestRunSummary summary, bool verbose = false, bool useColors = true )
   {
     var xml = ConvertToXmlString(summary);
     Console.WriteLine(xml);
   }
 
-  public async Task SaveAsync( TestRunSummary summary, string filePath )
+  public async Task SaveToFileAsync( TestRunSummary summary, string filePath, bool verbose = false )
   {
     var xml = ConvertToXmlString(summary);
     await File.WriteAllTextAsync(filePath, xml, Encoding.UTF8);

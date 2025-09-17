@@ -8,13 +8,13 @@ using Resty.Core.Models;
 /// </summary>
 public class HtmlOutputFormatter : IOutputFormatter
 {
-  public void FormatAndWrite( TestRunSummary summary, bool verbose = false, bool useColors = true )
+  public void WriteToConsole( TestRunSummary summary, bool verbose = false, bool useColors = true )
   {
     var html = GenerateHtml(summary, verbose);
     Console.WriteLine(html);
   }
 
-  public async Task SaveAsync( TestRunSummary summary, string filePath )
+  public async Task SaveToFileAsync( TestRunSummary summary, string filePath, bool verbose = false )
   {
     var html = GenerateHtml(summary, verbose: true); // Always include full details when saving
     await File.WriteAllTextAsync(filePath, html, Encoding.UTF8);
@@ -251,8 +251,9 @@ public class HtmlOutputFormatter : IOutputFormatter
 
   private static string EscapeHtml( string? text )
   {
-    if (string.IsNullOrEmpty(text))
+    if (string.IsNullOrEmpty(text)) {
       return string.Empty;
+    }
 
     return text
         .Replace("&", "&amp;")
