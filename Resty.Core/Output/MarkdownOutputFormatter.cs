@@ -48,14 +48,12 @@ public class MarkdownOutputFormatter : IOutputFormatter
     var h3 = ConsoleColors.Heading3.ToColorVariable();
 
     s.Append(h1).Append("# Test Results\n")
-    //  .Append(h1).Append("========================================\n")
-     .Append('\n');
-
-    s.Append(h2).Append("## Per File Results\n")
-    //  .Append(h2).Append("----------------------------------------\n")
      .Append('\n');
 
     // Results by file
+    s.Append(h2).Append("## Per File Results\n")
+     .Append('\n');
+
     // Group results by file for better organization
     var resultsByFile = summary.Results.GroupBy(r => r.Test.SourceFile).ToList();
 
@@ -121,7 +119,6 @@ public class MarkdownOutputFormatter : IOutputFormatter
 
     // Final summary
     s.Append(h2).Append("## Summary\n")
-    //  .Append(h2).Append("----------------------------------------\n")
      .Append('\n');
 
     // var stats = $"{summary.PassedTests}/{summary.TotalTests} passed in '{summary.TotalDuration.TotalSeconds:F2}s'";
@@ -141,7 +138,7 @@ public class MarkdownOutputFormatter : IOutputFormatter
     s.Append($"Skipped:  {summary.SkippedTests}\n");
     s.Append($"Duration: {summary.TotalDuration.TotalSeconds:F2} seconds\n");
     s.Append($"Total:    {summary.TotalTests}\n");
-    // s.Append($"Result:      {summary.PassedTests}/{summary.TotalTests} passed in '{summary.TotalDuration.TotalSeconds:F2}s'\n");
+    // s.Append($"Result:      {stats}\n");
 
     return s.ToString();
   }

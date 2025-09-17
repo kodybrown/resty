@@ -136,11 +136,14 @@ public class ConsoleOutputFormatter : IOutputFormatter
     s.Append('\n')
      .Append('\n');
 
-    s.Append($"Passed:   {summary.PassedTests} ({summary.PassRate:P1})\n");
-    s.Append($"Failed:   {summary.FailedTests}\n");
-    s.Append($"Skipped:  {summary.SkippedTests}\n");
-    s.Append($"Duration: {summary.TotalDuration.TotalSeconds:F2} seconds\n");
-    s.Append($"Total:    {summary.TotalTests}\n");
+    var pad = summary.TotalTests.ToString().Length;
+    var failColor = summary.FailedTests > 0 ? ConsoleColors.Error.ToColorVariable() : "";
+
+    s.Append($"{ConsoleColors.Passed.ToColorVariable()}Passed:   {summary.PassedTests.ToString().PadLeft(pad)} ({summary.PassRate:P1})\n");
+    s.Append($"{failColor}Failed:   {summary.FailedTests.ToString().PadLeft(pad)}\n");
+    s.Append($"Skipped:  {summary.SkippedTests.ToString().PadLeft(pad)}\n");
+    s.Append($"Total:    {summary.TotalTests.ToString().PadLeft(pad)}\n");
+    s.Append($"Duration: {$"{summary.TotalDuration.TotalSeconds:F2}".PadLeft(pad + 3)} seconds\n");
     // s.Append($"Result:      {summary.PassedTests}/{summary.TotalTests} passed in '{summary.TotalDuration.TotalSeconds:F2}s'\n");
 
     return s.ToString();
