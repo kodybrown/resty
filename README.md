@@ -4,6 +4,11 @@ A powerful, modern REST API testing tool that lets you write tests in human-read
 
 A .resty file is just a Markdown file with YAML code blocks defining HTTP requests and tests.
 
+## VSCode Extension
+
+We also have a VSCode extension for Resty.
+Use the [Resty.VSCode](https://github.com/kodybrown/resty-vscode) extension for the best experience!
+
 ## Features
 
 ✅ **Human-Readable Test Format** - Write tests in markdown with embedded YAML
