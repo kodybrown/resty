@@ -159,6 +159,14 @@ expect:
   headers:
     Content-Type: application/json; charset=utf-8
     X-Request-Id: $request_id
+  values:
+    - key: $.auth.user.id
+      op: greater_than
+      value: 0
+    - key: $.auth.user.email
+      op: endswith
+      value: "@example.com"
+
 capture:
   # Extract values from JSON response using JSONPath syntax
   token: $.auth.token

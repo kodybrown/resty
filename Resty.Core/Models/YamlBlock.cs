@@ -280,4 +280,43 @@ public record ExpectDefinition
   /// Values may contain variables to be resolved.
   /// </summary>
   public Dictionary<string, string>? Headers { get; init; }
+
+  /// <summary>
+  /// Expected JSON value assertions evaluated against the response body.
+  /// </summary>
+  public List<ValueExpectation>? Values { get; init; }
+}
+
+/// <summary>
+/// A rule describing a JSONPath extraction and comparison against an expected value.
+/// </summary>
+public record ValueExpectation
+{
+  /// <summary>
+  /// JSONPath expression to extract value(s) from the response JSON.
+  /// </summary>
+  public string Key { get; init; } = string.Empty;
+
+  /// <summary>
+  /// Operation to perform: equals, not_equals, contains, not_contains, startswith, not_startswith,
+  /// endswith, not_endswith, greater_than, greater_than_or_equal, less_than, less_than_or_equal,
+  /// exists, not_exists. Short aliases are supported (eq, ne, gt, gte, lt, lte, starts_with, ends_with).
+  /// </summary>
+  public string Op { get; init; } = string.Empty;
+
+  /// <summary>
+  /// Expected value to compare with. Optional for exists/not_exists.
+  /// May contain variables, and supports keywords: $null, $empty.
+  /// </summary>
+  public object? Value { get; init; }
+
+  /// <summary>
+  /// When provided, stores the extracted value (first matching) into a variable after evaluation.
+  /// </summary>
+  public string? StoreAs { get; init; }
+
+  /// <summary>
+  /// Whether to ignore case for string comparisons. Default true when null.
+  /// </summary>
+  public bool? IgnoreCase { get; init; }
 }

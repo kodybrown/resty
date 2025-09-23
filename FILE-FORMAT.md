@@ -82,6 +82,14 @@ The tool will automatically discover both file types in your directories.
 Use the `expect:` section to assert response properties. Currently supported:
 - `status`: exact HTTP status code that must be returned. If omitted, Resty uses standard success semantics (2xx).
 - `headers`: a dictionary of expected response headers (names are case-insensitive, values are case-sensitive). Values may contain variables.
+- `values`: a list of JSON value assertions evaluated against the response body.
+
+Each `values` rule has:
+- `key`: JSONPath expression
+- `op`: operation (equals, not_equals, contains, not_contains, startswith, not_startswith, endswith, not_endswith, greater_than, greater_than_or_equal, less_than, less_than_or_equal, exists, not_exists). Aliases: eq, ne, gt, gte, lt, lte, starts_with, ends_with.
+- `value`: expected value (not required for exists/not_exists). Supports `$null`, `$empty`, variables.
+- `store_as`: optional variable name to capture the extracted value.
+- `ignore_case`: optional boolean, default true for string ops.
 
 Use the `expect:` section to assert response properties. Currently supported:
 - `status`: exact HTTP status code that must be returned. If omitted, Resty uses standard success semantics (2xx).
@@ -89,12 +97,22 @@ Use the `expect:` section to assert response properties. Currently supported:
 Examples:
 
 ```yaml
-# Pass on 200
+# Pass on 200 and assert values
 expect:
   status: 200
   headers:
     Content-Type: application/json; charset=utf-8
     X-Trace-Id: $trace_id
+  values:
+    - key: $.response.id
+      op: equals
+      value: 12345
+    - key: $.response.success
+      op: equals
+      value: true
+    - key: $.response.name
+      op: contains
+      value: test
 ```
 
 ```yaml

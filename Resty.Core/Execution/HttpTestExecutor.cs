@@ -113,6 +113,27 @@ public class HttpTestExecutor
           }
         }
 
+        // Step 6.2: If status and headers passed, validate JSON value expectations
+        var valueExpectCaptured = new Dictionary<string, object>();
+        if (isPass && test.Expect?.Values is { Count: > 0 }) {
+          var valueValidation = ValidateExpectedValues(responseBody, test.Expect.Values, variableStore);
+          if (!valueValidation.IsValid) {
+            var failureResult = TestResult.Failure(
+              test,
+              startTime,
+              endTime,
+              valueValidation.ErrorMessage,
+              null,
+              response.StatusCode,
+              responseBody,
+              CreateRequestInfo(resolvedTest),
+              variableSnapshot
+            );
+            return failureResult;
+          }
+          valueExpectCaptured = valueValidation.StoredVariables;
+        }
+
         // Step 7: Extract variables from response if test considered passed
         var extractedVariables = new Dictionary<string, object>();
         var captureFailures = new List<string>();
@@ -156,6 +177,13 @@ public class HttpTestExecutor
 
         // Step 8: Create result
         if (isPass) {
+          // Merge stored variables from value expectations (without overriding capture keys)
+          foreach (var (k, v) in valueExpectCaptured) {
+            if (!extractedVariables.ContainsKey(k)) {
+              extractedVariables[k] = v;
+            }
+          }
+
           var result = TestResult.Success(
             test,
             startTime,
@@ -488,6 +516,298 @@ public class HttpTestExecutor
     return headers;
   }
 
+  private (bool IsValid, string ErrorMessage, Dictionary<string, object> StoredVariables) ValidateExpectedValues(
+      string? responseBody,
+      List<ValueExpectation> expectations,
+      VariableStore variableStore )
+  {
+    var stored = new Dictionary<string, object>();
+    if (expectations == null || expectations.Count == 0) {
+      return (true, string.Empty, stored);
+    }
+
+    if (string.IsNullOrEmpty(responseBody)) {
+      return (false, "Expected values mismatch: response body is empty or missing", stored);
+    }
+
+    JToken json;
+    try {
+      json = JToken.Parse(responseBody);
+    } catch (JsonException) {
+      return (false, "Expected values mismatch: response body is not valid JSON", stored);
+    }
+
+    var issues = new List<string>();
+
+    foreach (var rule in expectations) {
+      var key = rule.Key ?? string.Empty;
+      var op = NormalizeOp(rule.Op ?? string.Empty);
+      var ignoreCase = rule.IgnoreCase ?? true; // default true
+
+      // exists / not_exists don't need a value
+      if (IsExistenceOp(op)) {
+        var tokens = SelectTokensSafe(json, key);
+        var exists = tokens.Any();
+        var passed = op == "exists" ? exists : !exists;
+        if (!passed) {
+          issues.Add(op == "exists" ? $"missing: {key}" : $"should not exist: {key}");
+        } else if (exists && !string.IsNullOrWhiteSpace(rule.StoreAs)) {
+          var first = tokens.First();
+          stored[rule.StoreAs] = ConvertJTokenToObject(first);
+        }
+        continue;
+      }
+
+      // Resolve expected value (with variables and keywords)
+      var (expValue, expIsNull, expIsEmpty) = ResolveExpectedValue(rule.Value, variableStore);
+
+      var matchesAny = false;
+      var tokensToCheck = SelectTokensSafe(json, key).ToList();
+      if (!tokensToCheck.Any()) {
+        issues.Add($"missing: {key}");
+        continue;
+      }
+
+      foreach (var token in tokensToCheck) {
+        if (EvaluateComparison(token, op, expValue, expIsNull, expIsEmpty, ignoreCase)) {
+          matchesAny = true;
+          if (!string.IsNullOrWhiteSpace(rule.StoreAs)) {
+            stored[rule.StoreAs] = ConvertJTokenToObject(token);
+          }
+          break;
+        }
+      }
+
+      if (!matchesAny) {
+        var gotSample = tokensToCheck.FirstOrDefault();
+        var gotStr = gotSample != null ? tokenToPreview(gotSample) : "<missing>";
+        issues.Add($"{key} expected {op} '{ToDisplayString(expValue, expIsNull, expIsEmpty)}' but got {gotStr}");
+      }
+    }
+
+    if (issues.Count > 0) {
+      return (false, "Expected values mismatch: " + string.Join("; ", issues), stored);
+    }
+
+    return (true, string.Empty, stored);
+
+    static string tokenToPreview( JToken tok )
+    {
+      if (tok == null) {
+        return "<null>";
+      }
+      return tok.Type switch {
+        JTokenType.String => tok.Value<string>() ?? string.Empty,
+        JTokenType.Null => "<null>",
+        _ => tok.ToString(Newtonsoft.Json.Formatting.None)
+      };
+    }
+  }
+
+  private static IEnumerable<JToken> SelectTokensSafe( JToken json, string jsonPath )
+  {
+    try {
+      return json.SelectTokens(jsonPath) ?? Enumerable.Empty<JToken>();
+    } catch {
+      // Fallback to single token selection to handle bad paths
+      var t = json.SelectToken(jsonPath);
+      return t != null ? new[] { t } : Enumerable.Empty<JToken>();
+    }
+  }
+
+  private static (object? Value, bool IsNull, bool IsEmpty) ResolveExpectedValue(object? raw, VariableStore vars)
+  {
+    if (raw == null) return (null, false, false);
+
+    if (raw is string s) {
+      // Handle keyword literals before variable resolution
+      if (string.Equals(s, "$null", StringComparison.OrdinalIgnoreCase)) {
+        return (null, true, false);
+      }
+      if (string.Equals(s, "$empty", StringComparison.OrdinalIgnoreCase)) {
+        return (string.Empty, false, true);
+      }
+
+      // Resolve variables within string (may produce numbers/strings)
+      var resolved = vars.ResolveVariables(s);
+      if (string.Equals(resolved, "$null", StringComparison.OrdinalIgnoreCase)) {
+        return (null, true, false);
+      }
+      if (string.Equals(resolved, "$empty", StringComparison.OrdinalIgnoreCase)) {
+        return (string.Empty, false, true);
+      }
+      return (resolved, false, false);
+    }
+    return (raw, false, false);
+  }
+
+  private static bool IsExistenceOp( string op )
+  {
+    return string.Equals(op, "exists", StringComparison.OrdinalIgnoreCase)
+        || string.Equals(op, "not_exists", StringComparison.OrdinalIgnoreCase);
+  }
+
+  private static string NormalizeOp( string op )
+  {
+    var o = op.Trim().ToLowerInvariant().Replace(" ", "");
+    return o switch {
+      "eq" => "equals",
+      "ne" => "not_equals",
+      "gt" => "greater_than",
+      "gte" => "greater_than_or_equal",
+      "lt" => "less_than",
+      "lte" => "less_than_or_equal",
+      "starts_with" => "startswith",
+      "ends_with" => "endswith",
+      _ => o
+    };
+  }
+
+  private static bool EvaluateComparison(
+      JToken token,
+      string op,
+      object? expected,
+      bool expIsNull,
+      bool expIsEmpty,
+      bool ignoreCase )
+  {
+    // Handle $null / $empty on equals and not_equals quickly
+    if (op is "equals" or "not_equals") {
+      var isNull = token.Type == JTokenType.Null;
+      var tokVal = isNull ? null : ConvertJTokenToObject(token);
+      var left = tokVal?.ToString() ?? string.Empty;
+      var right = expected?.ToString() ?? string.Empty;
+      var equal = expIsNull ? isNull : (expIsEmpty ? (left == string.Empty) : StringEquals(left, right, ignoreCase));
+      return op == "equals" ? equal : !equal;
+    }
+
+    // exists/not_exists should have been handled earlier
+    if (op is "exists" or "not_exists") {
+      return true;
+    }
+
+    // String operations require strings
+    if (op.StartsWith("starts") || op.StartsWith("ends") || op.Contains("contains")) {
+      var left = token.Type == JTokenType.Null ? string.Empty : token.ToString();
+      var right = expected?.ToString() ?? string.Empty;
+      var comp = ignoreCase ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
+
+      bool result = op switch {
+        "contains" => left?.IndexOf(right, comp) >= 0,
+        "not_contains" => left?.IndexOf(right, comp) < 0,
+        "startswith" => left?.StartsWith(right, comp) == true,
+        "not_startswith" => left?.StartsWith(right, comp) != true,
+        "endswith" => left?.EndsWith(right, comp) == true,
+        "not_endswith" => left?.EndsWith(right, comp) != true,
+        _ => false
+      };
+      return result;
+    }
+
+    // Relational: numeric or date
+    // Try direct date parse from string token and string expected
+    if (token.Type == JTokenType.String && expected is string es &&
+        DateTimeOffset.TryParse(token.Value<string>(), System.Globalization.CultureInfo.InvariantCulture,
+          System.Globalization.DateTimeStyles.RoundtripKind | System.Globalization.DateTimeStyles.AssumeUniversal | System.Globalization.DateTimeStyles.AdjustToUniversal, out var dLeft) &&
+        DateTimeOffset.TryParse(es, System.Globalization.CultureInfo.InvariantCulture,
+          System.Globalization.DateTimeStyles.RoundtripKind | System.Globalization.DateTimeStyles.AssumeUniversal | System.Globalization.DateTimeStyles.AdjustToUniversal, out var dRight)) {
+      return op switch {
+        "greater_than" => dLeft > dRight,
+        "greater_than_or_equal" => dLeft >= dRight,
+        "less_than" => dLeft < dRight,
+        "less_than_or_equal" => dLeft <= dRight,
+        _ => false
+      };
+    }
+
+    // Try numeric first
+    if (TryGetNumeric(token, out var numLeft) && TryCoerceToDouble(expected, out var numRight)) {
+      return op switch {
+        "greater_than" => numLeft > numRight,
+        "greater_than_or_equal" => numLeft >= numRight,
+        "less_than" => numLeft < numRight,
+        "less_than_or_equal" => numLeft <= numRight,
+        _ => false
+      };
+    }
+
+    // Try date
+    if (TryGetDate(token, out var dateLeft) && TryCoerceToDate(expected, out var dateRight)) {
+      return op switch {
+        "greater_than" => dateLeft > dateRight,
+        "greater_than_or_equal" => dateLeft >= dateRight,
+        "less_than" => dateLeft < dateRight,
+        "less_than_or_equal" => dateLeft <= dateRight,
+        _ => false
+      };
+    }
+
+    // Fallback type mismatch → only equals/not_equals treat strings; others fail
+    return false;
+  }
+
+  private static bool StringEquals( string a, string b, bool ignoreCase )
+  {
+    return string.Equals(a ?? string.Empty, b ?? string.Empty, ignoreCase ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal);
+  }
+
+  private static bool TryGetNumeric( JToken token, out double value )
+  {
+    value = default;
+    switch (token.Type) {
+      case JTokenType.Integer:
+        value = token.Value<long>();
+        return true;
+      case JTokenType.Float:
+        value = token.Value<double>();
+        return true;
+      case JTokenType.String:
+        return double.TryParse(token.Value<string>(), System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out value);
+      default:
+        return false;
+    }
+  }
+
+  private static bool TryCoerceToDouble( object? expected, out double value )
+  {
+    value = default;
+    if (expected is null) {
+      return false;
+    }
+    if (expected is double d) { value = d; return true; }
+    if (expected is float f) { value = f; return true; }
+    if (expected is long l) { value = l; return true; }
+    if (expected is int i) { value = i; return true; }
+    if (expected is string s) {
+      return double.TryParse(s, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out value);
+    }
+    return false;
+  }
+
+  private static bool TryGetDate(JToken token, out DateTimeOffset value)
+  {
+    value = default;
+    if (token.Type == JTokenType.Date) { value = token.Value<DateTimeOffset>(); return true; }
+    if (token.Type == JTokenType.String) {
+      var s = token.Value<string>();
+      var styles = System.Globalization.DateTimeStyles.RoundtripKind | System.Globalization.DateTimeStyles.AssumeUniversal | System.Globalization.DateTimeStyles.AdjustToUniversal;
+      if (DateTimeOffset.TryParse(s, System.Globalization.CultureInfo.InvariantCulture, styles, out var dto)) { value = dto; return true; }
+    }
+    return false;
+  }
+
+  private static bool TryCoerceToDate(object? expected, out DateTimeOffset value)
+  {
+    value = default;
+    if (expected is DateTime dt) { value = new DateTimeOffset(dt); return true; }
+    if (expected is DateTimeOffset dto) { value = dto; return true; }
+    if (expected is string s) {
+      var styles = System.Globalization.DateTimeStyles.RoundtripKind | System.Globalization.DateTimeStyles.AssumeUniversal | System.Globalization.DateTimeStyles.AdjustToUniversal;
+      if (DateTimeOffset.TryParse(s, System.Globalization.CultureInfo.InvariantCulture, styles, out var dto2)) { value = dto2; return true; }
+    }
+    return false;
+  }
+
   private (bool IsValid, string ErrorMessage) ValidateExpectedHeaders(
       Dictionary<string, string> responseHeaders,
       Dictionary<string, string> expectedHeaders,
@@ -526,6 +846,15 @@ public class HttpTestExecutor
     }
 
     return (true, string.Empty);
+  }
+
+  private static string ToDisplayString( object? value, bool isNull, bool isEmpty )
+  {
+    if (isNull)
+      return "<null>";
+    if (isEmpty)
+      return "";
+    return value?.ToString() ?? "";
   }
 
   /// <summary>
@@ -576,7 +905,7 @@ public class HttpTestExecutor
   /// <summary>
   /// Converts a JToken to an appropriate .NET object type.
   /// </summary>
-  private object ConvertJTokenToObject( JToken token )
+  private static object ConvertJTokenToObject( JToken token )
   {
     return token.Type switch {
       JTokenType.String => token.Value<string>() ?? string.Empty,

@@ -80,7 +80,8 @@ public class HttpTestExecutorTests
         ItExpr.IsAny<HttpRequestMessage>(),
         ItExpr.IsAny<CancellationToken>())
       .Callback<HttpRequestMessage, CancellationToken>(( req, _ ) => capturedRequest = req)
-      .ReturnsAsync(() => {
+      .ReturnsAsync(() =>
+      {
         var resp = new HttpResponseMessage {
           StatusCode = HttpStatusCode.OK,
           Content = new StringContent("{}", Encoding.UTF8, "application/json")
@@ -167,7 +168,8 @@ public class HttpTestExecutorTests
         "SendAsync",
         ItExpr.IsAny<HttpRequestMessage>(),
         ItExpr.IsAny<CancellationToken>())
-      .ReturnsAsync(() => {
+      .ReturnsAsync(() =>
+      {
         var resp = new HttpResponseMessage {
           StatusCode = HttpStatusCode.OK,
           Content = new StringContent("{}", Encoding.UTF8, "application/json")
@@ -212,7 +214,8 @@ public class HttpTestExecutorTests
         "SendAsync",
         ItExpr.IsAny<HttpRequestMessage>(),
         ItExpr.IsAny<CancellationToken>())
-      .ReturnsAsync(() => {
+      .ReturnsAsync(() =>
+      {
         var resp = new HttpResponseMessage {
           StatusCode = HttpStatusCode.OK,
           Content = new StringContent("{}", Encoding.UTF8, "application/json")
@@ -301,7 +304,8 @@ public class HttpTestExecutorTests
         "SendAsync",
         ItExpr.IsAny<HttpRequestMessage>(),
         ItExpr.IsAny<CancellationToken>())
-      .ReturnsAsync(() => {
+      .ReturnsAsync(() =>
+      {
         var resp = new HttpResponseMessage {
           StatusCode = HttpStatusCode.OK,
           Content = new StringContent("{}", Encoding.UTF8, "application/json")
@@ -373,6 +377,267 @@ public class HttpTestExecutorTests
     // Assert
     Assert.True(result.Failed);
     Assert.Contains("HTTP 404 Not Found", result.ErrorMessage!);
+  }
+
+  // ===== expect.values tests =====
+
+  [Fact]
+  public async Task ExpectValues_ShouldPass_Equals_String_IgnoreCase_DefaultTrue()
+  {
+    // Arrange
+    var responseJson = "{\"name\":\"TestUser\"}";
+    var mockHandler = new Mock<HttpMessageHandler>();
+    mockHandler.Protected()
+      .Setup<Task<HttpResponseMessage>>("SendAsync", ItExpr.IsAny<HttpRequestMessage>(), ItExpr.IsAny<CancellationToken>())
+      .ReturnsAsync(new HttpResponseMessage {
+        StatusCode = HttpStatusCode.OK,
+        Content = new StringContent(responseJson, Encoding.UTF8, "application/json")
+      });
+
+    var executor = new HttpTestExecutor(new HttpClient(mockHandler.Object));
+
+    var test = new HttpTest {
+      Name = "ev_equals_ignorecase",
+      Method = "GET",
+      Url = "https://api.example.com",
+      Expect = new ExpectDefinition {
+        Status = 200,
+        Values = new List<ValueExpectation> {
+          new() { Key = "$.name", Op = "equals", Value = "testuser" } // ignore_case defaults true
+        }
+      }
+    };
+
+    var store = new VariableStore();
+
+    // Act
+    var result = await executor.ExecuteTestAsync(test, store);
+
+    // Assert
+    Assert.True(result.Passed);
+  }
+
+  [Fact]
+  public async Task ExpectValues_ShouldFail_Equals_String_CaseSensitive()
+  {
+    // Arrange
+    var responseJson = "{\"name\":\"TestUser\"}";
+    var mockHandler = new Mock<HttpMessageHandler>();
+    mockHandler.Protected()
+      .Setup<Task<HttpResponseMessage>>("SendAsync", ItExpr.IsAny<HttpRequestMessage>(), ItExpr.IsAny<CancellationToken>())
+      .ReturnsAsync(new HttpResponseMessage {
+        StatusCode = HttpStatusCode.OK,
+        Content = new StringContent(responseJson, Encoding.UTF8, "application/json")
+      });
+
+    var executor = new HttpTestExecutor(new HttpClient(mockHandler.Object));
+
+    var test = new HttpTest {
+      Name = "ev_equals_casesensitive",
+      Method = "GET",
+      Url = "https://api.example.com",
+      Expect = new ExpectDefinition {
+        Status = 200,
+        Values = new List<ValueExpectation> {
+          new() { Key = "$.name", Op = "equals", Value = "testuser", IgnoreCase = false }
+        }
+      }
+    };
+
+    var store = new VariableStore();
+
+    // Act
+    var result = await executor.ExecuteTestAsync(test, store);
+
+    // Assert
+    Assert.True(result.Failed);
+    Assert.Contains("expected equals", result.ErrorMessage!);
+  }
+
+  [Fact]
+  public async Task ExpectValues_ShouldPass_Numeric_Relational()
+  {
+    // Arrange
+    var responseJson = "{\"age\":25}";
+    var mockHandler = new Mock<HttpMessageHandler>();
+    mockHandler.Protected()
+      .Setup<Task<HttpResponseMessage>>("SendAsync", ItExpr.IsAny<HttpRequestMessage>(), ItExpr.IsAny<CancellationToken>())
+      .ReturnsAsync(new HttpResponseMessage {
+        StatusCode = HttpStatusCode.OK,
+        Content = new StringContent(responseJson, Encoding.UTF8, "application/json")
+      });
+
+    var executor = new HttpTestExecutor(new HttpClient(mockHandler.Object));
+
+    var test = new HttpTest {
+      Name = "ev_numeric_rel",
+      Method = "GET",
+      Url = "https://api.example.com",
+      Expect = new ExpectDefinition {
+        Status = 200,
+        Values = new List<ValueExpectation> {
+          new() { Key = "$.age", Op = "greater_than", Value = 18 },
+          new() { Key = "$.age", Op = "less_than_or_equal", Value = 25 }
+        }
+      }
+    };
+
+    var store = new VariableStore();
+
+    // Act
+    var result = await executor.ExecuteTestAsync(test, store);
+
+    // Assert
+    Assert.True(result.Passed);
+  }
+
+
+  [Fact]
+  public async Task ExpectValues_ShouldHandle_Exists_And_NotExists()
+  {
+    // Arrange
+    var responseJson = "{\"present\":1}";
+    var mockHandler = new Mock<HttpMessageHandler>();
+    mockHandler.Protected()
+      .Setup<Task<HttpResponseMessage>>("SendAsync", ItExpr.IsAny<HttpRequestMessage>(), ItExpr.IsAny<CancellationToken>())
+      .ReturnsAsync(new HttpResponseMessage {
+        StatusCode = HttpStatusCode.OK,
+        Content = new StringContent(responseJson, Encoding.UTF8, "application/json")
+      });
+
+    var executor = new HttpTestExecutor(new HttpClient(mockHandler.Object));
+
+    var test = new HttpTest {
+      Name = "ev_exists",
+      Method = "GET",
+      Url = "https://api.example.com",
+      Expect = new ExpectDefinition {
+        Status = 200,
+        Values = new List<ValueExpectation> {
+          new() { Key = "$.present", Op = "exists" },
+          new() { Key = "$.missing", Op = "not_exists" }
+        }
+      }
+    };
+
+    var store = new VariableStore();
+
+    // Act
+    var result = await executor.ExecuteTestAsync(test, store);
+
+    // Assert
+    Assert.True(result.Passed);
+  }
+
+  [Fact]
+  public async Task ExpectValues_ShouldSupport_Array_AnyMatch()
+  {
+    // Arrange
+    var responseJson = "{\"items\":[{\"name\":\"alpha\"},{\"name\":\"beta-promo\"}]}";
+    var mockHandler = new Mock<HttpMessageHandler>();
+    mockHandler.Protected()
+      .Setup<Task<HttpResponseMessage>>("SendAsync", ItExpr.IsAny<HttpRequestMessage>(), ItExpr.IsAny<CancellationToken>())
+      .ReturnsAsync(new HttpResponseMessage {
+        StatusCode = HttpStatusCode.OK,
+        Content = new StringContent(responseJson, Encoding.UTF8, "application/json")
+      });
+
+    var executor = new HttpTestExecutor(new HttpClient(mockHandler.Object));
+
+    var test = new HttpTest {
+      Name = "ev_array_any",
+      Method = "GET",
+      Url = "https://api.example.com",
+      Expect = new ExpectDefinition {
+        Status = 200,
+        Values = new List<ValueExpectation> {
+          new() { Key = "$.items[*].name", Op = "endswith", Value = "-promo" }
+        }
+      }
+    };
+
+    var store = new VariableStore();
+
+    // Act
+    var result = await executor.ExecuteTestAsync(test, store);
+
+    // Assert
+    Assert.True(result.Passed);
+  }
+
+  [Fact]
+  public async Task ExpectValues_ShouldCapture_With_StoreAs()
+  {
+    // Arrange
+    var responseJson = "{\"response\":{\"id\":12345}}";
+    var mockHandler = new Mock<HttpMessageHandler>();
+    mockHandler.Protected()
+      .Setup<Task<HttpResponseMessage>>("SendAsync", ItExpr.IsAny<HttpRequestMessage>(), ItExpr.IsAny<CancellationToken>())
+      .ReturnsAsync(new HttpResponseMessage {
+        StatusCode = HttpStatusCode.OK,
+        Content = new StringContent(responseJson, Encoding.UTF8, "application/json")
+      });
+
+    var executor = new HttpTestExecutor(new HttpClient(mockHandler.Object));
+
+    var test = new HttpTest {
+      Name = "ev_store_as",
+      Method = "GET",
+      Url = "https://api.example.com",
+      Expect = new ExpectDefinition {
+        Status = 200,
+        Values = new List<ValueExpectation> {
+          new() { Key = "$.response.id", Op = "equals", Value = 12345, StoreAs = "response_id" }
+        }
+      }
+    };
+
+    var store = new VariableStore();
+
+    // Act
+    var result = await executor.ExecuteTestAsync(test, store);
+
+    // Assert
+    Assert.True(result.Passed);
+    Assert.True(result.ExtractedVariables.ContainsKey("response_id"));
+    Assert.Equal(12345L, result.ExtractedVariables["response_id"]); // JToken int → long
+  }
+
+  [Fact]
+  public async Task ExpectValues_ShouldHandle_Null_And_Empty()
+  {
+    // Arrange
+    var responseJson = "{\"nickname\":\"\",\"deleted_at\":null}";
+    var mockHandler = new Mock<HttpMessageHandler>();
+    mockHandler.Protected()
+      .Setup<Task<HttpResponseMessage>>("SendAsync", ItExpr.IsAny<HttpRequestMessage>(), ItExpr.IsAny<CancellationToken>())
+      .ReturnsAsync(new HttpResponseMessage {
+        StatusCode = HttpStatusCode.OK,
+        Content = new StringContent(responseJson, Encoding.UTF8, "application/json")
+      });
+
+    var executor = new HttpTestExecutor(new HttpClient(mockHandler.Object));
+
+    var test = new HttpTest {
+      Name = "ev_null_empty",
+      Method = "GET",
+      Url = "https://api.example.com",
+      Expect = new ExpectDefinition {
+        Status = 200,
+        Values = new List<ValueExpectation> {
+          new() { Key = "$.nickname", Op = "equals", Value = "$empty" },
+          new() { Key = "$.deleted_at", Op = "equals", Value = "$null" }
+        }
+      }
+    };
+
+    var store = new VariableStore();
+
+    // Act
+    var result = await executor.ExecuteTestAsync(test, store);
+
+    // Assert
+    Assert.True(result.Passed);
   }
 
   [Fact]
