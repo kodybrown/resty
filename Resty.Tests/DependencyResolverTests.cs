@@ -1,7 +1,7 @@
 namespace Resty.Tests;
 
-using Resty.Core.Execution;
 using Resty.Core.Exceptions;
+using Resty.Core.Execution;
 using Resty.Core.Models;
 
 public class DependencyResolverTests

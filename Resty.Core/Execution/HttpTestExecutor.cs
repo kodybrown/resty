@@ -1,5 +1,6 @@
 namespace Resty.Core.Execution;
 
+using System.Collections;
 using System.Net;
 using System.Net.Sockets;
 using System.Text;
@@ -7,7 +8,6 @@ using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using Resty.Core.Models;
 using Resty.Core.Variables;
-using System.Collections;
 
 /// <summary>
 /// Executes HTTP tests with variable resolution and response capture.
@@ -425,12 +425,12 @@ public class HttpTestExecutor
       case string s:
         return vars.ResolveVariables(s);
       case IDictionary<string, object?> stringDict:
-        return stringDict.ToDictionary(kvp => kvp.Key, kvp => ResolveStructuredVariablesDeep(kvp.Value, vars));
+        return stringDict.ToDictionary(kvp => kvp.Key, kvp => ResolveStructuredVariablesDeep(kvp.Value!, vars));
       case IDictionary<object, object?> objDict:
         var result = new Dictionary<string, object?>();
         foreach (var kvp in objDict) {
           var key = kvp.Key?.ToString() ?? string.Empty;
-          result[key] = ResolveStructuredVariablesDeep(kvp.Value, vars);
+          result[key] = ResolveStructuredVariablesDeep(kvp.Value!, vars);
         }
         return result;
       case IEnumerable<object?> list:
@@ -615,9 +615,9 @@ public class HttpTestExecutor
     }
   }
 
-  private static (object? Value, bool IsNull, bool IsEmpty) ResolveExpectedValue(object? raw, VariableStore vars)
+  private static (object? Value, bool IsNull, bool IsEmpty) ResolveExpectedValue( object? raw, VariableStore vars )
   {
-    if (raw == null) return (null, false, false);
+    if (raw == null) { return (null, false, false); }
 
     if (raw is string s) {
       // Handle keyword literals before variable resolution
@@ -784,7 +784,7 @@ public class HttpTestExecutor
     return false;
   }
 
-  private static bool TryGetDate(JToken token, out DateTimeOffset value)
+  private static bool TryGetDate( JToken token, out DateTimeOffset value )
   {
     value = default;
     if (token.Type == JTokenType.Date) { value = token.Value<DateTimeOffset>(); return true; }
@@ -796,7 +796,7 @@ public class HttpTestExecutor
     return false;
   }
 
-  private static bool TryCoerceToDate(object? expected, out DateTimeOffset value)
+  private static bool TryCoerceToDate( object? expected, out DateTimeOffset value )
   {
     value = default;
     if (expected is DateTime dt) { value = new DateTimeOffset(dt); return true; }
@@ -850,10 +850,13 @@ public class HttpTestExecutor
 
   private static string ToDisplayString( object? value, bool isNull, bool isEmpty )
   {
-    if (isNull)
+    if (isNull) {
       return "<null>";
-    if (isEmpty)
+    }
+    if (isEmpty) {
       return "";
+    }
+
     return value?.ToString() ?? "";
   }
 

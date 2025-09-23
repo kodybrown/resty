@@ -1,7 +1,7 @@
 namespace Resty.Tests;
 
-using Resty.Core.Parsers;
 using Resty.Core.Models;
+using Resty.Core.Parsers;
 
 public class MarkdownParserTests
 {

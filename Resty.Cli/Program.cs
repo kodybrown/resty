@@ -1,10 +1,10 @@
 namespace Resty;
 
-using Resty.Core.Execution;
+using System.Text;
 using Resty.Core.Exceptions;
+using Resty.Core.Execution;
 using Resty.Core.Models;
 using Resty.Core.Output;
-using System.Text;
 
 public enum OutputFormats { Text = 0, Markdown, Json, Xml, Html }
 
