@@ -81,6 +81,10 @@ The tool will automatically discover both file types in your directories.
 
 Use the `expect:` section to assert response properties. Currently supported:
 - `status`: exact HTTP status code that must be returned. If omitted, Resty uses standard success semantics (2xx).
+- `headers`: a dictionary of expected response headers (names are case-insensitive, values are case-sensitive). Values may contain variables.
+
+Use the `expect:` section to assert response properties. Currently supported:
+- `status`: exact HTTP status code that must be returned. If omitted, Resty uses standard success semantics (2xx).
 
 Examples:
 
@@ -88,12 +92,17 @@ Examples:
 # Pass on 200
 expect:
   status: 200
+  headers:
+    Content-Type: application/json; charset=utf-8
+    X-Trace-Id: $trace_id
 ```
 
 ```yaml
 # Intentionally expect a 404 and still consider the test passed
 expect:
   status: 404
+  headers:
+    Content-Type: application/json
 ```
 
 ## Best Practices

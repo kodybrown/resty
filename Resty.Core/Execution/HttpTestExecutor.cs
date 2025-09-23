@@ -93,6 +93,25 @@ public class HttpTestExecutor
         // Step 6: Determine pass/fail based on expectations
         var isPass = IsPass(response, test);
 
+        // Step 6.1: If status passed and header expectations exist, validate expected headers
+        if (isPass && test.Expect?.Headers is { Count: > 0 }) {
+          var headerValidation = ValidateExpectedHeaders(responseHeaders, test.Expect.Headers, variableStore);
+          if (!headerValidation.IsValid) {
+            var failureResult = TestResult.Failure(
+              test,
+              startTime,
+              endTime,
+              headerValidation.ErrorMessage,
+              null,
+              response.StatusCode,
+              responseBody,
+              CreateRequestInfo(resolvedTest),
+              variableSnapshot
+            );
+            return failureResult;
+          }
+        }
+
         // Step 7: Extract variables from response if test considered passed
         var extractedVariables = new Dictionary<string, object>();
         var captureFailures = new List<string>();
@@ -385,6 +404,46 @@ public class HttpTestExecutor
     }
 
     return headers;
+  }
+
+  private (bool IsValid, string ErrorMessage) ValidateExpectedHeaders(
+      Dictionary<string, string> responseHeaders,
+      Dictionary<string, string> expectedHeaders,
+      VariableStore variableStore )
+  {
+    if (expectedHeaders == null || expectedHeaders.Count == 0) {
+      return (true, string.Empty);
+    }
+
+    // Build a case-insensitive map of response headers
+    var actual = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+    foreach (var kvp in responseHeaders) {
+      actual[kvp.Key] = kvp.Value;
+    }
+
+    var issues = new List<string>();
+
+    foreach (var (expectedName, expectedRawValue) in expectedHeaders) {
+      // Resolve variables in expected value
+      var resolvedExpected = variableStore.ResolveVariables(expectedRawValue ?? string.Empty) ?? string.Empty;
+      var expectedValue = (resolvedExpected ?? string.Empty).Trim();
+
+      if (!actual.TryGetValue(expectedName, out var actualValueRaw)) {
+        issues.Add($"missing header '{expectedName}'");
+        continue;
+      }
+
+      var actualValue = (actualValueRaw ?? string.Empty).Trim();
+      if (!string.Equals(expectedValue, actualValue, StringComparison.Ordinal)) {
+        issues.Add($"header '{expectedName}' expected '{expectedValue}' but got '{actualValue}'");
+      }
+    }
+
+    if (issues.Count > 0) {
+      return (false, "Expected header(s) mismatch: " + string.Join("; ", issues));
+    }
+
+    return (true, string.Empty);
   }
 
   /// <summary>

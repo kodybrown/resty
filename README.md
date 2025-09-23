@@ -151,6 +151,9 @@ body: |
   }
 expect:
   status: 200
+  headers:
+    Content-Type: application/json; charset=utf-8
+    X-Request-Id: $request_id
 capture:
   # Extract values from JSON response using JSONPath syntax
   token: $.auth.token
@@ -420,6 +423,11 @@ capture:
 Capture strictness:
 - For 2xx responses (except 204 No Content), all capture paths are treated as required. If any capture fails (missing path, invalid JSON, empty body), the test fails with a "Capture failed" error.
 - For non-2xx responses and 204 No Content, capture is best-effort and never causes the test to fail.
+
+Header expectations:
+- Names are case-insensitive; values are case-sensitive and compared exactly after trimming whitespace.
+- Values support variable substitution (e.g., `$trace_id`).
+- Header expectations are only validated if the status expectation passes (if present), or if there is no status expectation and the response is 2xx.
 
 Use JSONPath syntax to extract values from JSON responses:
 

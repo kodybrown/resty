@@ -261,4 +261,10 @@ public record ExpectDefinition
   /// Expected HTTP status code (e.g., 200, 404). If not specified, defaults to 2xx success semantics.
   /// </summary>
   public int? Status { get; init; }
+
+  /// <summary>
+  /// Expected response headers (case-insensitive names, case-sensitive values).
+  /// Values may contain variables to be resolved.
+  /// </summary>
+  public Dictionary<string, string>? Headers { get; init; }
 }
