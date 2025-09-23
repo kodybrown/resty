@@ -50,7 +50,7 @@ body: |-
     "Username": "$admin_username",
     "Password": "$env:ADMIN_PASSWORD"
   }
-success:
+capture:
   token: auth.response.result.token
 ```
 """;
@@ -65,8 +65,8 @@ success:
     Assert.Equal("auth", block.Test);
     Assert.Equal("$host/api/auth", block.Post);
     Assert.Contains("Username", block.Body!);
-    Assert.NotNull(block.Success);
-    Assert.Equal("auth.response.result.token", block.Success["token"]);
+    Assert.NotNull(block.Capture);
+    Assert.Equal("auth.response.result.token", block.Capture["token"]);
   }
 
   [Fact]

@@ -12,13 +12,14 @@ get: https://httpbin.org/get
 ```yaml
 test: post-with-json-body
 post: https://httpbin.org/post
-content-type: application/json
+headers:
+  content-type: application/json
 body: |
   {
     "user": "test-user",
     "action": "login"
   }
-success:
+capture:
   # Extract the URL for use in later tests  
   request_url: $.url
 ```
@@ -28,7 +29,7 @@ success:
 ```yaml
 test: extract-response-data
 get: https://httpbin.org/json
-success:
+capture:
   # Extract values from the JSON response using JSONPath
   slideshow_title: $.slideshow.title
   author_name: $.slideshow.author
@@ -55,7 +56,8 @@ variables:
 
 test: authenticated-request
 get: $base_url/protected
-authorization: Bearer $api_key
+headers:
+  authorization: Bearer $api_key
 ```
 
 This demonstrates the new `.resty` file format with full markdown syntax highlighting in VSCode!

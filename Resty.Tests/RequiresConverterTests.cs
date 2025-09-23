@@ -114,7 +114,7 @@ body: |
     ""username"": ""user"",
     ""password"": ""pass""
   }
-success:
+capture:
   token: $.token
 ```
 

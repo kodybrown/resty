@@ -235,7 +235,7 @@ public class HttpTestExecutorTests
   }
 
   [Fact]
-  public async Task ExecuteTestAsync_ShouldHandleInvalidJsonPath()
+  public async Task ExecuteTestAsync_ShouldFailWhenCaptureMissingOn2xx()
   {
     // Arrange
     var mockHandler = new Mock<HttpMessageHandler>();
@@ -255,7 +255,7 @@ public class HttpTestExecutorTests
     var executor = new HttpTestExecutor(httpClient);
 
     var test = new HttpTest {
-      Name = "test_invalid_path",
+      Name = "test_capture_strict_on_2xx",
       Method = "GET",
       Url = "https://api.example.com/data",
       Extractors = new Dictionary<string, string> {
@@ -270,12 +270,9 @@ public class HttpTestExecutorTests
     var result = await executor.ExecuteTestAsync(test, variableStore);
 
     // Assert
-    Assert.True(result.Passed);
-    Assert.Single(result.ExtractedVariables); // Only valid extraction should succeed
-    Assert.Equal(42L, result.ExtractedVariables["valid_value"]);
-    Assert.False(result.ExtractedVariables.ContainsKey("invalid_value"));
+    Assert.True(result.Failed);
+    Assert.Contains("Capture failed", result.ErrorMessage!);
   }
-
   [Fact]
   public async Task ExecuteTestAsync_ShouldHandleEnvironmentVariables()
   {
@@ -323,5 +320,86 @@ public class HttpTestExecutorTests
     } finally {
       Environment.SetEnvironmentVariable("TEST_API_KEY", null);
     }
+  }
+
+  [Fact]
+  public async Task ExecuteTestAsync_ShouldPassWhenExpectedStatusMatchesNon2xx()
+  {
+    // Arrange
+    var mockHandler = new Mock<HttpMessageHandler>();
+    var responseJson = @"{""error"": ""not found""}";
+
+    mockHandler.Protected()
+      .Setup<Task<HttpResponseMessage>>(
+        "SendAsync",
+        ItExpr.IsAny<HttpRequestMessage>(),
+        ItExpr.IsAny<CancellationToken>())
+      .ReturnsAsync(new HttpResponseMessage {
+        StatusCode = HttpStatusCode.NotFound,
+        ReasonPhrase = "Not Found",
+        Content = new StringContent(responseJson, Encoding.UTF8, "application/json")
+      });
+
+    var httpClient = new HttpClient(mockHandler.Object);
+    var executor = new HttpTestExecutor(httpClient);
+
+    var test = new HttpTest {
+      Name = "test_expected_404",
+      Method = "GET",
+      Url = "https://api.example.com/missing",
+      ExpectedStatus = 404,
+      Extractors = new Dictionary<string, string> {
+        ["error_msg"] = "$.error"
+      }
+    };
+
+    var variableStore = new VariableStore();
+
+    // Act
+    var result = await executor.ExecuteTestAsync(test, variableStore);
+
+    // Assert
+    Assert.True(result.Passed);
+    Assert.Equal(HttpStatusCode.NotFound, result.StatusCode);
+    Assert.Single(result.ExtractedVariables);
+    Assert.Equal("not found", result.ExtractedVariables["error_msg"]);
+  }
+
+  [Fact]
+  public async Task ExecuteTestAsync_ShouldFailWhenExpectedStatusMismatch()
+  {
+    // Arrange
+    var mockHandler = new Mock<HttpMessageHandler>();
+
+    mockHandler.Protected()
+      .Setup<Task<HttpResponseMessage>>(
+        "SendAsync",
+        ItExpr.IsAny<HttpRequestMessage>(),
+        ItExpr.IsAny<CancellationToken>())
+      .ReturnsAsync(new HttpResponseMessage {
+        StatusCode = HttpStatusCode.BadRequest,
+        ReasonPhrase = "Bad Request",
+        Content = new StringContent("{}", Encoding.UTF8, "application/json")
+      });
+
+    var httpClient = new HttpClient(mockHandler.Object);
+    var executor = new HttpTestExecutor(httpClient);
+
+    var test = new HttpTest {
+      Name = "test_expected_404_mismatch",
+      Method = "GET",
+      Url = "https://api.example.com/endpoint",
+      ExpectedStatus = 404
+    };
+
+    var variableStore = new VariableStore();
+
+    // Act
+    var result = await executor.ExecuteTestAsync(test, variableStore);
+
+    // Assert
+    Assert.True(result.Failed);
+    Assert.Equal(HttpStatusCode.BadRequest, result.StatusCode);
+    Assert.Contains("Expected status 404 but got 400", result.ErrorMessage!);
   }
 }

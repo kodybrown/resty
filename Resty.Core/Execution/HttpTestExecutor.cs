@@ -90,14 +90,52 @@ public class HttpTestExecutor
 
         var endTime = DateTime.UtcNow;
 
-        // Step 6: Extract variables from response if successful
+        // Step 6: Determine pass/fail based on expectations
+        var isPass = IsPass(response, test);
+
+        // Step 7: Extract variables from response if test considered passed
         var extractedVariables = new Dictionary<string, object>();
-        if (response.IsSuccessStatusCode && resolvedTest.Extractors.Count > 0) {
-          extractedVariables = ExtractResponseVariables(responseBody, resolvedTest.Extractors);
+        var captureFailures = new List<string>();
+        var parseFailed = false;
+        if (isPass && resolvedTest.Extractors.Count > 0) {
+          var extraction = ExtractResponseVariables(responseBody, resolvedTest.Extractors);
+          extractedVariables = extraction.Extracted;
+          captureFailures = extraction.Failures;
+          parseFailed = extraction.ParseFailed;
         }
 
-        // Step 7: Create result
-        if (response.IsSuccessStatusCode) {
+        // Step 7.1: Enforce strict capture rules for 2xx (except 201)
+        if (isPass && resolvedTest.Extractors.Count > 0 && ShouldTreatCaptureStrict(response.StatusCode)) {
+          var missingKeys = resolvedTest.Extractors.Keys
+            .Where(k => !extractedVariables.ContainsKey(k))
+            .Distinct()
+            .ToList();
+
+          if (missingKeys.Count > 0 || captureFailures.Count > 0 || parseFailed) {
+            var details = new List<string>();
+            if (missingKeys.Count > 0) { details.Add($"missing: {string.Join(", ", missingKeys)}"); }
+            if (captureFailures.Count > 0) { details.Add($"errors: {string.Join(", ", captureFailures)}"); }
+            if (parseFailed) { details.Add("response not JSON or empty"); }
+            var captureErrorMessage = "Capture failed (" + string.Join("; ", details) + ")";
+
+            var failureResult = TestResult.Failure(
+              test,
+              startTime,
+              endTime,
+              captureErrorMessage,
+              null,
+              response.StatusCode,
+              responseBody,
+              CreateRequestInfo(resolvedTest),
+              variableSnapshot
+            );
+
+            return failureResult;
+          }
+        }
+
+        // Step 8: Create result
+        if (isPass) {
           var result = TestResult.Success(
             test,
             startTime,
@@ -119,10 +157,7 @@ public class HttpTestExecutor
 
           return result;
         } else {
-          var errorMessage = $"HTTP {(int)response.StatusCode} {response.ReasonPhrase}";
-          if (attempt > 1) {
-            errorMessage += $" (attempt {attempt}/{totalAttempts})";
-          }
+          var errorMessage = BuildFailureMessage(response, test, attempt, totalAttempts);
 
           lastResult = TestResult.Failure(
             test,
@@ -171,9 +206,37 @@ public class HttpTestExecutor
       "Unknown error during retry execution", lastException);
   }
 
-  /// <summary>
-  /// Determines if an HTTP status code is retryable.
-  /// </summary>
+  private static bool IsPass( HttpResponseMessage response, HttpTest test )
+  {
+    return test.ExpectedStatus.HasValue
+      ? (int)response.StatusCode == test.ExpectedStatus.Value
+      : response.IsSuccessStatusCode;
+  }
+
+  private static string BuildFailureMessage( HttpResponseMessage response, HttpTest test, int attempt, int totalAttempts )
+  {
+    string errorMessage;
+
+    if (test.ExpectedStatus.HasValue) {
+      errorMessage = $"Expected status {test.ExpectedStatus.Value} but got {(int)response.StatusCode} {response.ReasonPhrase}";
+    } else {
+      errorMessage = $"HTTP {(int)response.StatusCode} {response.ReasonPhrase}";
+    }
+
+    if (attempt > 1) {
+      errorMessage += $" (attempt {attempt}/{totalAttempts})";
+    }
+
+    return errorMessage;
+  }
+
+  private static bool ShouldTreatCaptureStrict( HttpStatusCode statusCode )
+  {
+    // Strict capture for 2xx except 204 (No Content)
+    var code = (int)statusCode;
+    return code >= 200 && code <= 299 && statusCode != HttpStatusCode.NoContent;
+  }
+
   private static bool IsRetryableStatusCode( HttpStatusCode statusCode )
   {
     // Retry on server errors and some client errors
@@ -223,6 +286,7 @@ public class HttpTestExecutor
     // Priority 3: Use HttpClient's default timeout (don't override)
     return null;
   }
+
   /// <summary>
   /// Resolves variables in the test definition.
   /// </summary>
@@ -255,28 +319,46 @@ public class HttpTestExecutor
     var method = new HttpMethod(resolvedTest.Method);
     var request = new HttpRequestMessage(method, resolvedTest.Url);
 
-    // Set content type
+    var contentType = resolvedTest.ContentType ?? "application/json";
+    var authorization = resolvedTest.Authorization;
+
+    // Set the content if resolvedTest.Body is present.
     if (!string.IsNullOrEmpty(resolvedTest.Body)) {
       request.Content = new StringContent(
         resolvedTest.Body,
         Encoding.UTF8,
-        resolvedTest.ContentType
+        contentType
       );
     }
 
-    // Set authorization header
-    if (!string.IsNullOrEmpty(resolvedTest.Authorization)) {
-      var authParts = resolvedTest.Authorization.Split(' ', 2);
-      if (authParts.Length == 2) {
-        request.Headers.Authorization
-          = new System.Net.Http.Headers.AuthenticationHeaderValue(authParts[0], authParts[1]);
-      } else {
-        request.Headers.Add("Authorization", resolvedTest.Authorization);
+    // Add the 'Content-Type' header.
+    if (!string.IsNullOrEmpty(contentType)) {
+      if (request.Content != null) {
+        try {
+          request.Content.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue(contentType);
+        } catch {
+          // Fallback: add without validation if parsing fails
+          request.Content.Headers.TryAddWithoutValidation("Content-Type", contentType);
+        }
       }
     }
 
-    // Set additional headers
+    // Add the 'Authorization' header.
+    if (!string.IsNullOrEmpty(authorization)) {
+      var parts = authorization.Split(' ', 2);
+      if (parts.Length == 2) {
+        request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue(parts[0], parts[1]);
+      } else {
+        request.Headers.TryAddWithoutValidation("Authorization", authorization);
+      }
+    }
+
+    // Set remaining headers, excluding 'Content-Type' and 'Authorization' which were handled above.
     foreach (var (key, value) in resolvedTest.Headers) {
+      if (string.Equals(key, "Content-Type", StringComparison.OrdinalIgnoreCase)
+          || string.Equals(key, "Authorization", StringComparison.OrdinalIgnoreCase)) {
+        continue; // Already handled.
+      }
       request.Headers.TryAddWithoutValidation(key, value);
     }
 
@@ -308,14 +390,17 @@ public class HttpTestExecutor
   /// <summary>
   /// Extracts variables from the response body using the configured extractors.
   /// </summary>
-  private Dictionary<string, object> ExtractResponseVariables(
+  private (Dictionary<string, object> Extracted, List<string> Failures, bool ParseFailed) ExtractResponseVariables(
       string responseBody,
       Dictionary<string, string> extractors )
   {
     var extractedVariables = new Dictionary<string, object>();
+    var failures = new List<string>();
+    var parseFailed = false;
 
     if (string.IsNullOrEmpty(responseBody)) {
-      return extractedVariables;
+      // No body to parse; treat as parse failed for strict evaluation
+      return (extractedVariables, failures, true);
     }
 
     try {
@@ -330,19 +415,21 @@ public class HttpTestExecutor
             // Convert JToken to appropriate .NET type
             var extractedValue = ConvertJTokenToObject(extractedToken);
             extractedVariables[variableName] = extractedValue;
+          } else {
+            failures.Add(variableName);
           }
         } catch (Exception ex) {
-          // Log extraction failure but don't fail the test
-          // In a real implementation, you might want to log this
+          // Log extraction failure but don't fail the test unless strict rules apply
           Console.WriteLine($"Failed to extract variable '{variableName}' using path '{jsonPath}': {ex.Message}");
+          failures.Add(variableName);
         }
       }
     } catch (JsonException) {
       // Response is not valid JSON - can't extract variables
-      // This is not necessarily an error, just means no extraction possible
+      parseFailed = true;
     }
 
-    return extractedVariables;
+    return (extractedVariables, failures, parseFailed);
   }
 
   /// <summary>

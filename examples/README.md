@@ -143,7 +143,7 @@ test: my-test-name
 get: https://api.example.com/endpoint
 headers:
   Authorization: Bearer $token
-success:
+capture:
   # Extract values using JSONPath syntax (note the $ prefix)
   user_id: $.user.id
   auth_token: $.result.token
@@ -168,7 +168,7 @@ Resty uses JSONPath syntax to extract values from JSON responses. The key points
 # For API response: {"result": {"token": "abc123", "user": {"id": 42}}}
 test: login
 post: /api/auth
-success:
+capture:
   auth_token: $.result.token    # Extracts "abc123"
   user_id: $.result.user.id     # Extracts 42
 ```
@@ -177,7 +177,7 @@ success:
 # For API response: {"users": [{"name": "Alice"}, {"name": "Bob"}]}
 test: get-users
 get: /api/users
-success:
+capture:
   first_user: $.users[0].name   # Extracts "Alice"
   last_user: $.users[-1].name   # Extracts "Bob" (last element)
   all_names: $.users[*].name    # Extracts ["Alice", "Bob"]

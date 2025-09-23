@@ -17,7 +17,7 @@ body: |
     "message": "Testing .rest extension",
     "timestamp": "2025-01-01T00:00:00Z"
   }
-success:
+capture:
   # Extract the HTTP method from the response using JSONPath
   request_method: $.method
 ```
