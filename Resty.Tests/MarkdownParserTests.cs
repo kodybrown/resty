@@ -36,6 +36,34 @@ More documentation.
   }
 
   [Fact]
+  public void FindYamlBlocks_ShouldParseDependenciesInNonTestBlock()
+  {
+    // Arrange
+    var markdown = """
+# Config Block With Dependencies
+
+```yaml
+include:
+  - variables.yaml
+  - auth.resty
+dependencies:
+  - get_token
+```
+""";
+
+    // Act
+    var blocks = MarkdownParser.FindYamlBlocks(markdown, "test.md");
+
+    // Assert
+    Assert.Single(blocks);
+    var block = blocks.First().Value;
+    Assert.False(block.IsTest);
+    Assert.NotNull(block.Include);
+    Assert.NotNull(block.Dependencies);
+    Assert.Contains("get_token", block.Dependencies);
+  }
+
+  [Fact]
   public void FindYamlBlocks_ShouldParseTestBlock()
   {
     // Arrange

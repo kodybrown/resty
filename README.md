@@ -197,6 +197,26 @@ headers:
 
 ### Include Files
 
+You can declare shared dependencies for the file in the same top configuration block using `dependencies:`.
+These dependencies are tests that must run before any tests in the current file.
+They are most useful when combined with including `.resty` files.
+
+Example:
+
+```yaml
+include:
+  - variables.yaml
+  - variables.private.yaml
+  - auth.resty
+dependencies:
+  - get_token        # test defined in auth.resty
+```
+
+Notes:
+- `dependencies:` applies to the current file’s tests only. It augments each test’s `requires:` internally, so the dependency order is guaranteed.
+- You can also write `auth.resty?get_token`; only the test name portion is used for matching.
+- If multiple configuration blocks specify `dependencies:`, they are merged.
+
 ```yaml
 # Load shared variables from external files
 # - .yaml/.yml files load variables only (with nested includes and precedence)

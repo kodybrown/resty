@@ -196,6 +196,12 @@ public record YamlBlock
   public List<string>? Requires { get; init; }
 
   /// <summary>
+  /// Non-test block dependencies that must be executed before any tests in this file.
+  /// Intended for use in configuration blocks alongside 'include' to define shared setup.
+  /// </summary>
+  public List<string>? Dependencies { get; init; }
+
+  /// <summary>
   /// Determines if this block represents an HTTP test.
   /// A test must have a test name and exactly one HTTP method.
   /// </summary>

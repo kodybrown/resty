@@ -66,6 +66,14 @@ public class TestSuiteRunner
 
     var allBlocks = yamlBlocks.Values.ToList();
 
+    // Global dependencies declared in non-test config blocks
+    var globalDependencies = allBlocks
+      .Where(b => !b.IsTest && (b.Dependencies?.Count > 0 || b.Requires?.Count > 0))
+      .SelectMany(b => (b.Dependencies ?? new List<string>()).Concat(b.Requires ?? new List<string>()))
+      .Select(NormalizeDependencyName)
+      .Distinct(StringComparer.OrdinalIgnoreCase)
+      .ToList();
+
     // Step 3.1: Load included .rest/.resty files to enable cross-file dependencies
     var includeResty = testSuite.IncludeFiles
       .Where(f => f.EndsWith(".rest", StringComparison.OrdinalIgnoreCase) || f.EndsWith(".resty", StringComparison.OrdinalIgnoreCase))
@@ -86,6 +94,18 @@ public class TestSuiteRunner
 
     // Determine selected tests: only tests defined in this file should be primary selections; dependencies can come from includes
     var ownTestNames = yamlBlocks.Values.Where(b => b.IsTest && !string.IsNullOrWhiteSpace(b.Test)).Select(b => b.Test!).Distinct().ToList();
+
+    // Augment test requires with global dependencies (apply only to tests in this file)
+    if (globalDependencies.Count > 0) {
+      for (var i = 0; i < allBlocks.Count; i++) {
+        var b = allBlocks[i];
+        if (b.IsTest && !string.IsNullOrWhiteSpace(b.Test) && blockSourceMap.TryGetValue(b, out var src) && string.Equals(src.FilePath, testSuite.FilePath, StringComparison.OrdinalIgnoreCase)) {
+          var requires = (b.Requires ?? new List<string>()).Concat(globalDependencies).Select(NormalizeDependencyName).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+          b = b with { Requires = requires };
+          allBlocks[i] = b;
+        }
+      }
+    }
 
     IReadOnlyList<YamlBlock> resolvedBlocks;
     try {
@@ -191,6 +211,14 @@ public class TestSuiteRunner
 
     var allBlocks = yamlBlocks.Values.ToList();
 
+    // Global dependencies from non-test config blocks
+    var globalDependencies = allBlocks
+      .Where(b => !b.IsTest && (b.Dependencies?.Count > 0 || b.Requires?.Count > 0))
+      .SelectMany(b => (b.Dependencies ?? new List<string>()).Concat(b.Requires ?? new List<string>()))
+      .Select(NormalizeDependencyName)
+      .Distinct(StringComparer.OrdinalIgnoreCase)
+      .ToList();
+
     // Load included .rest/.resty files so their tests can be resolved as dependencies
     var includeResty = testSuite.IncludeFiles
       .Where(f => f.EndsWith(".rest", StringComparison.OrdinalIgnoreCase) || f.EndsWith(".resty", StringComparison.OrdinalIgnoreCase))
@@ -223,6 +251,18 @@ public class TestSuiteRunner
             selectedTestNames.Add(block.Test);
             break;
           }
+        }
+      }
+    }
+
+    // Augment test requires with global dependencies (apply only to tests in this file)
+    if (globalDependencies.Count > 0) {
+      for (var i = 0; i < allBlocks.Count; i++) {
+        var b = allBlocks[i];
+        if (b.IsTest && !string.IsNullOrWhiteSpace(b.Test) && blockSourceMap.TryGetValue(b, out var src) && string.Equals(src.FilePath, filePath, StringComparison.OrdinalIgnoreCase)) {
+          var requires = (b.Requires ?? new List<string>()).Concat(globalDependencies).Select(NormalizeDependencyName).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+          b = b with { Requires = requires };
+          allBlocks[i] = b;
         }
       }
     }
@@ -419,5 +459,11 @@ public class TestSuiteRunner
 
     var now = DateTime.UtcNow;
     return TestResult.Failure(dummyTest, now, now, $"Failed to parse test file: {ex.Message}", ex);
+  }
+  private static string NormalizeDependencyName( string name )
+  {
+    if (string.IsNullOrWhiteSpace(name)) { return string.Empty; }
+    var idx = name.LastIndexOf('?');
+    return idx >= 0 ? name[(idx + 1)..].Trim() : name.Trim();
   }
 }
