@@ -78,6 +78,9 @@ public class ConsoleOutputFormatter : IOutputFormatter
 
         if (verbose) {
           s.Append(' ').Append(result.Test.Name).Append('\n');
+          if (!string.IsNullOrWhiteSpace(result.Test.Description)) {
+            s.Append("  - Description: ").Append(result.Test.Description).Append("\n");
+          }
           s.Append("  - Method:   '").Append(result.Test.Method).Append("'\n");
           s.Append("  - URL:      '").Append(result.RequestInfo?.Url ?? result.Test.Url).Append("'\n");
           s.Append("  - Duration: '").Append($"{result.Duration.TotalSeconds:F3}s").Append("'\n");
@@ -93,7 +96,11 @@ public class ConsoleOutputFormatter : IOutputFormatter
         } else {
           s.Append(' ').Append(result.Test.Name).Append(' ')
            .Append(ConsoleColors.TimeDuration.ToColorVariable())
-           .Append('(').Append($"{result.Duration.TotalSeconds:F3}s)").Append('\n');
+           .Append('(').Append($"{result.Duration.TotalSeconds:F3}s").Append(')');
+          if (!string.IsNullOrWhiteSpace(result.Test.Description)) {
+            s.Append(": ").Append(result.Test.Description);
+          }
+          s.Append('\n');
         }
 
         // Show error details for failed tests

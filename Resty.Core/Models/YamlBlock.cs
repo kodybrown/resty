@@ -27,6 +27,12 @@ public record YamlBlock
   public string? Test { get; init; }
 
   /// <summary>
+  /// Optional human-readable description for the test.
+  /// Included in all report formats.
+  /// </summary>
+  public string? Description { get; init; }
+
+  /// <summary>
   /// Expectations for the response (e.g., expected status code).
   /// Matches the 'expect:' YAML section.
   /// </summary>

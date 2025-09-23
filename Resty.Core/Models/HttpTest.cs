@@ -21,6 +21,11 @@ public record HttpTest
   public string Url { get; init; } = string.Empty;
 
   /// <summary>
+  /// Optional human-readable description for the test.
+  /// </summary>
+  public string? Description { get; init; }
+
+  /// <summary>
   /// Content-Type header value.
   /// </summary>
   public string ContentType { get; init; } = "application/json";
@@ -102,6 +107,7 @@ public record HttpTest
       Name = block.Test!,
       Method = methodAndUrl.Value.Method,
       Url = methodAndUrl.Value.Url,
+      Description = block.Description,
       ContentType = block.ContentType ?? "application/json",
       Authorization = block.Authorization,
       Headers = block.Headers ?? new Dictionary<string, string>(),

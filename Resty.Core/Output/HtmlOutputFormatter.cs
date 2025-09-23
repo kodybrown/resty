@@ -151,6 +151,9 @@ public class HtmlOutputFormatter : IOutputFormatter
         html.AppendLine($"                        <div class=\"test-header\">");
         html.AppendLine($"                            <span class=\"test-icon\">{statusIcon}</span>");
         html.AppendLine($"                            <span class=\"test-name\">{EscapeHtml(result.Test.Name)}</span>");
+        if (!string.IsNullOrWhiteSpace(result.Test.Description)) {
+          html.AppendLine($"                            <span class=\"test-desc\">{EscapeHtml(result.Test.Description)}</span>");
+        }
         html.AppendLine($"                            <span class=\"test-method\">{result.Test.Method}</span>");
         html.AppendLine($"                            <span class=\"test-duration\">{result.Duration.TotalSeconds:F3}s</span>");
         html.AppendLine($"                        </div>");

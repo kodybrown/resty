@@ -52,6 +52,7 @@ public class JsonOutputFormatter : IOutputFormatter
       File = result.Test.SourceFile,
       Method = result.Test.Method,
       Url = result.RequestInfo?.Url ?? result.Test.Url,
+      Description = result.Test.Description,
       Status = result.Status.ToString(),
       Duration = result.Duration.TotalSeconds,
       StatusCode = result.StatusCode.HasValue ? (int)result.StatusCode.Value : null,
