@@ -430,7 +430,7 @@ public class HttpTestExecutor
         var result = new Dictionary<string, object?>();
         foreach (var kvp in objDict) {
           var key = kvp.Key?.ToString() ?? string.Empty;
-          result[key] = ResolveStructuredVariablesDeep(kvp.Value!, vars);
+          result[key] = ResolveStructuredVariablesDeep(kvp.Value, vars);
         }
         return result;
       case IEnumerable<object?> list:
