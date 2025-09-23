@@ -164,9 +164,10 @@ public record YamlBlock
   public Dictionary<string, string>? Headers { get; init; }
 
   /// <summary>
-  /// HTTP request body content.
+  /// HTTP request body content. Can be a string (raw) or a structured mapping/array.
+  /// When structured, it will be serialized based on Content-Type.
   /// </summary>
-  public string? Body { get; init; }
+  public object? Body { get; init; }
 
   /// <summary>
   /// Response capture definitions for extracting values from responses.

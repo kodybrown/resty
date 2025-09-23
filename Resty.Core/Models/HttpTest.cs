@@ -36,9 +36,15 @@ public record HttpTest
   public Dictionary<string, string> Headers { get; init; } = new();
 
   /// <summary>
-  /// HTTP request body content (may contain variables).
+  /// HTTP request body content (string) after variable resolution for legacy/raw usage.
+  /// For structured bodies, see RawBody which will be serialized later.
   /// </summary>
   public string? Body { get; init; }
+
+  /// <summary>
+  /// Raw body as parsed from YAML. Can be string, dictionary, list, or null.
+  /// </summary>
+  public object? RawBody { get; init; }
 
   /// <summary>
   /// Response extractors for capturing values from successful responses.
@@ -99,7 +105,9 @@ public record HttpTest
       ContentType = block.ContentType ?? "application/json",
       Authorization = block.Authorization,
       Headers = block.Headers ?? new Dictionary<string, string>(),
-      Body = block.Body,
+      // If Body is a string, assign to Body; RawBody always gets the original
+      Body = block.Body as string,
+      RawBody = block.Body,
       Extractors = block.Capture ?? new Dictionary<string, string>(),
       Expect = block.Expect,
       SourceFile = sourceFile,

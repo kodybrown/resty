@@ -127,6 +127,47 @@ expect:
 - Extract only the values you need for subsequent tests
 - Document complex JSONPath expressions with comments
 
+### Request Body
+
+You can supply the body as either a raw string (JSON or otherwise) or as a structured YAML object that will be serialized for you.
+
+- If Content-Type is application/json (or omitted), a structured body will be serialized to JSON.
+- If Content-Type is application/x-www-form-urlencoded and the body is a mapping, it will be URL-encoded as key=value&key2=value2.
+- Structured bodies with any other Content-Type are not allowed and will cause an error.
+
+Examples:
+
+```yaml
+# Raw string JSON
+body: |
+  {
+    "name": "John Doe",
+    "email": "john@example.com"
+  }
+```
+
+```yaml
+# Structured YAML → JSON
+body:
+  name: John Doe
+  email: john@example.com
+```
+
+```yaml
+# application/x-www-form-urlencoded from mapping
+headers:
+  content-type: application/x-www-form-urlencoded
+body:
+  username: $username
+  password: $password
+```
+
+```yaml
+headers:
+  content-type: application/x-www-form-urlencoded
+body: 'username=$username&password=$password'
+```
+
 ### JSONPath Examples
 
 ```yaml

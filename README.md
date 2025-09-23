@@ -129,6 +129,11 @@ headers:
 
 ### Request Body
 
+You can write the body as a raw string or as a structured YAML object.
+- application/json (or omitted): structured object is JSON-serialized.
+- application/x-www-form-urlencoded: mapping encodes to key=value pairs.
+- Any other Content-Type with a structured body is an error (must be a string body).
+
 ```yaml
 test: post-data
 post: https://api.example.com/users

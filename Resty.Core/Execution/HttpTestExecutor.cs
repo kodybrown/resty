@@ -7,6 +7,7 @@ using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using Resty.Core.Models;
 using Resty.Core.Variables;
+using System.Collections;
 
 /// <summary>
 /// Executes HTTP tests with variable resolution and response capture.
@@ -311,23 +312,104 @@ public class HttpTestExecutor
   /// </summary>
   private ResolvedHttpTest ResolveVariables( HttpTest test, VariableStore variableStore )
   {
+    var resolvedUrl = variableStore.ResolveVariables(test.Url);
+    var resolvedContentType = variableStore.ResolveVariables(test.ContentType);
+
+    // Resolve headers (values only)
+    var resolvedHeaders = test.Headers.ToDictionary(
+      kvp => kvp.Key,
+      kvp => variableStore.ResolveVariables(kvp.Value)
+    );
+
+    // Resolve authorization
+    var resolvedAuth = !string.IsNullOrEmpty(test.Authorization)
+      ? variableStore.ResolveVariables(test.Authorization)
+      : null;
+
+    // Resolve/serialize body
+    string? resolvedBody = null;
+    if (test.RawBody is null) {
+      // Fallback for legacy string Body when RawBody is not provided
+      resolvedBody = !string.IsNullOrEmpty(test.Body)
+        ? variableStore.ResolveVariables(test.Body)
+        : null;
+    } else if (test.RawBody is string s) {
+      resolvedBody = variableStore.ResolveVariables(s);
+    } else {
+      // Structured body: dictionary/array
+      var normalized = ResolveStructuredVariablesDeep(test.RawBody, variableStore);
+      if (string.IsNullOrEmpty(resolvedContentType) || resolvedContentType.StartsWith("application/json", StringComparison.OrdinalIgnoreCase)) {
+        resolvedBody = JsonConvert.SerializeObject(normalized);
+        if (string.IsNullOrEmpty(resolvedContentType)) {
+          resolvedContentType = "application/json";
+        }
+      } else if (resolvedContentType.StartsWith("application/x-www-form-urlencoded", StringComparison.OrdinalIgnoreCase)) {
+        if (normalized is IDictionary<string, object?> mapDict) {
+          resolvedBody = SerializeFormUrlEncoded(mapDict);
+        } else {
+          throw new InvalidOperationException("Structured body for application/x-www-form-urlencoded must be a mapping (dictionary).");
+        }
+      } else {
+        throw new InvalidOperationException($"Structured body is only supported with content types 'application/json' or 'application/x-www-form-urlencoded'. Got '{resolvedContentType}'.");
+      }
+    }
+
     return new ResolvedHttpTest {
       Name = test.Name,
       Method = test.Method,
-      Url = variableStore.ResolveVariables(test.Url),
-      ContentType = variableStore.ResolveVariables(test.ContentType),
-      Authorization = !string.IsNullOrEmpty(test.Authorization)
-        ? variableStore.ResolveVariables(test.Authorization)
-        : null,
-      Headers = test.Headers.ToDictionary(
-          kvp => kvp.Key,
-          kvp => variableStore.ResolveVariables(kvp.Value)
-        ),
-      Body = !string.IsNullOrEmpty(test.Body)
-        ? variableStore.ResolveVariables(test.Body)
-        : null,
+      Url = resolvedUrl,
+      ContentType = resolvedContentType,
+      Authorization = resolvedAuth,
+      Headers = resolvedHeaders,
+      Body = resolvedBody,
       Extractors = test.Extractors
     };
+  }
+
+  private static IDictionary<string, object?> ToStringObjectDictionary( object obj )
+  {
+    if (obj is IDictionary<string, object?> stringDict) { return stringDict; }
+    if (obj is IDictionary<object, object?> objDict) {
+      var result = new Dictionary<string, object?>();
+      foreach (var kvp in objDict) {
+        var key = kvp.Key?.ToString() ?? string.Empty;
+        result[key] = kvp.Value;
+      }
+      return result;
+    }
+    throw new InvalidOperationException("Expected a dictionary for form-encoded body.");
+  }
+
+  private static string SerializeFormUrlEncoded( IDictionary<string, object?> dict )
+  {
+    var parts = new List<string>();
+    foreach (var (k, v) in dict) {
+      var key = Uri.EscapeDataString(k ?? string.Empty);
+      var val = Uri.EscapeDataString(v?.ToString() ?? string.Empty);
+      parts.Add($"{key}={val}");
+    }
+    return string.Join("&", parts);
+  }
+
+  private static object ResolveStructuredVariablesDeep( object value, VariableStore vars )
+  {
+    switch (value) {
+      case string s:
+        return vars.ResolveVariables(s);
+      case IDictionary<string, object?> stringDict:
+        return stringDict.ToDictionary(kvp => kvp.Key, kvp => ResolveStructuredVariablesDeep(kvp.Value!, vars));
+      case IDictionary<object, object?> objDict:
+        var result = new Dictionary<string, object?>();
+        foreach (var kvp in objDict) {
+          var key = kvp.Key?.ToString() ?? string.Empty;
+          result[key] = ResolveStructuredVariablesDeep(kvp.Value!, vars);
+        }
+        return result;
+      case IEnumerable<object?> list:
+        return list.Select(item => item is null ? null : ResolveStructuredVariablesDeep(item, vars)).ToList();
+      default:
+        return value; // numbers, bools, etc.
+    }
   }
 
   /// <summary>

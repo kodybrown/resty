@@ -376,6 +376,141 @@ public class HttpTestExecutorTests
   }
 
   [Fact]
+  public async Task ExecuteTestAsync_ShouldSerializeStructuredJsonBody()
+  {
+    // Arrange
+    var mockHandler = new Mock<HttpMessageHandler>();
+    HttpRequestMessage? capturedRequest = null;
+
+    mockHandler.Protected()
+      .Setup<Task<HttpResponseMessage>>(
+        "SendAsync",
+        ItExpr.IsAny<HttpRequestMessage>(),
+        ItExpr.IsAny<CancellationToken>())
+      .Callback<HttpRequestMessage, CancellationToken>(( req, _ ) => capturedRequest = req)
+      .ReturnsAsync(new HttpResponseMessage {
+        StatusCode = HttpStatusCode.OK,
+        Content = new StringContent("{}", Encoding.UTF8, "application/json")
+      });
+
+    var httpClient = new HttpClient(mockHandler.Object);
+    var executor = new HttpTestExecutor(httpClient);
+
+    var test = new HttpTest {
+      Name = "structured_json_body",
+      Method = "POST",
+      Url = "https://api.example.com/login",
+      ContentType = "application/json",
+      RawBody = new Dictionary<string, object?> {
+        ["username"] = "$user",
+        ["password"] = "$pass"
+      }
+    };
+
+    var store = new VariableStore();
+    store.SetIncludedVariables(new Dictionary<string, object> {
+      ["user"] = "alice",
+      ["pass"] = "secret"
+    });
+
+    // Act
+    var result = await executor.ExecuteTestAsync(test, store);
+
+    // Assert
+    Assert.True(result.Passed);
+    Assert.NotNull(capturedRequest);
+    var sent = await capturedRequest!.Content!.ReadAsStringAsync();
+    Assert.Contains("\"username\":\"alice\"", sent);
+    Assert.Contains("\"password\":\"secret\"", sent);
+  }
+
+  [Fact]
+  public async Task ExecuteTestAsync_ShouldSerializeStructuredFormBody()
+  {
+    // Arrange
+    var mockHandler = new Mock<HttpMessageHandler>();
+    HttpRequestMessage? capturedRequest = null;
+
+    mockHandler.Protected()
+      .Setup<Task<HttpResponseMessage>>(
+        "SendAsync",
+        ItExpr.IsAny<HttpRequestMessage>(),
+        ItExpr.IsAny<CancellationToken>())
+      .Callback<HttpRequestMessage, CancellationToken>(( req, _ ) => capturedRequest = req)
+      .ReturnsAsync(new HttpResponseMessage {
+        StatusCode = HttpStatusCode.OK,
+        Content = new StringContent("{}", Encoding.UTF8, "application/json")
+      });
+
+    var httpClient = new HttpClient(mockHandler.Object);
+    var executor = new HttpTestExecutor(httpClient);
+
+    var test = new HttpTest {
+      Name = "structured_form_body",
+      Method = "POST",
+      Url = "https://api.example.com/login",
+      ContentType = "application/x-www-form-urlencoded",
+      RawBody = new Dictionary<string, object?> {
+        ["username"] = "$user",
+        ["password"] = "$pass"
+      }
+    };
+
+    var store = new VariableStore();
+    store.SetIncludedVariables(new Dictionary<string, object> {
+      ["user"] = "alice",
+      ["pass"] = "secret!"
+    });
+
+    // Act
+    var result = await executor.ExecuteTestAsync(test, store);
+
+    // Assert
+    Assert.True(result.Passed);
+    Assert.NotNull(capturedRequest);
+    var sent = await capturedRequest!.Content!.ReadAsStringAsync();
+    Assert.Contains("username=alice", sent);
+    Assert.Contains("password=secret%21", sent);
+  }
+
+  [Fact]
+  public async Task ExecuteTestAsync_ShouldErrorOnStructuredBodyWithUnsupportedContentType()
+  {
+    // Arrange
+    var mockHandler = new Mock<HttpMessageHandler>();
+
+    mockHandler.Protected()
+      .Setup<Task<HttpResponseMessage>>(
+        "SendAsync",
+        ItExpr.IsAny<HttpRequestMessage>(),
+        ItExpr.IsAny<CancellationToken>())
+      .ReturnsAsync(new HttpResponseMessage {
+        StatusCode = HttpStatusCode.OK,
+        Content = new StringContent("{}", Encoding.UTF8, "application/json")
+      });
+
+    var httpClient = new HttpClient(mockHandler.Object);
+    var executor = new HttpTestExecutor(httpClient);
+
+    var test = new HttpTest {
+      Name = "structured_bad_type",
+      Method = "POST",
+      Url = "https://api.example.com/login",
+      ContentType = "text/plain",
+      RawBody = new Dictionary<string, object?> { ["a"] = 1 }
+    };
+
+    var store = new VariableStore();
+
+    // Act
+    var result = await executor.ExecuteTestAsync(test, store);
+
+    // Assert
+    Assert.True(result.Failed);
+    Assert.Contains("Structured body is only supported", result.ErrorMessage!);
+  }
+
+  [Fact]
   public async Task ExecuteTestAsync_ShouldHandleAuthorizationHeader()
   {
     // Arrange
