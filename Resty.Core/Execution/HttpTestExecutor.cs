@@ -425,7 +425,7 @@ public class HttpTestExecutor
       case string s:
         return vars.ResolveVariables(s);
       case IDictionary<string, object?> stringDict:
-        return stringDict.ToDictionary(kvp => kvp.Key, kvp => ResolveStructuredVariablesDeep(kvp.Value!, vars));
+        return stringDict.ToDictionary(kvp => kvp.Key, kvp => ResolveStructuredVariablesDeep(kvp.Value, vars));
       case IDictionary<object, object?> objDict:
         var result = new Dictionary<string, object?>();
         foreach (var kvp in objDict) {
