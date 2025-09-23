@@ -11,14 +11,14 @@ Use the [Resty.VSCode](https://github.com/kodybrown/resty-vscode) extension for 
 
 ## Features
 
-✅ **Human-Readable Test Format** - Write tests in markdown with embedded YAML
-✅ **Variable System** - Support for file variables, environment variables, and response capture
-✅ **Multiple Output Formats** - Console, JSON, JUnit XML, and Interactive HTML reports
-✅ **Test Organization** - Group tests by files and directories
-✅ **Filtering & Selection** - Run specific tests, patterns, or entire suites
-✅ **Response Capture** - Extract values from responses for use in subsequent tests
-✅ **Shared Configuration** - Include common variables and settings across test files
-✅ **Professional Output** - Beautiful console output with colors and detailed reporting
+- ✅ **Human-Readable Test Format** - Write tests in markdown with embedded YAML
+- ✅ **Variable System** - Support for file variables, environment variables, and response capture
+- ✅ **Multiple Output Formats** - Console, JSON, JUnit XML, and Interactive HTML reports
+- ✅ **Test Organization** - Group tests by files and directories
+- ✅ **Filtering & Selection** - Run specific tests, patterns, or entire suites
+- ✅ **Response Capture** - Extract values from responses for use in subsequent tests
+- ✅ **Shared Configuration** - Include common variables and settings across test files
+- ✅ **Professional Output** - Beautiful console output with colors and detailed reporting
 
 ## Quick Start
 
