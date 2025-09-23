@@ -92,7 +92,8 @@ capture:
     Assert.True(block.IsTest);
     Assert.Equal("auth", block.Test);
     Assert.Equal("$host/api/auth", block.Post);
-    Assert.Contains("Username", block.Body?.ToString());
+    Assert.NotNull(block.Body);
+    Assert.Contains("Username", block.Body.ToString());
     Assert.NotNull(block.Capture);
     Assert.Equal("auth.response.result.token", block.Capture["token"]);
   }
