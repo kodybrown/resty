@@ -1,19 +1,88 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
-
-  <ItemGroup>
-    <ProjectReference Include="..\Resty.Core\Resty.Core.csproj" />
-  </ItemGroup>
+<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
     <OutputType>Exe</OutputType>
     <TargetFramework>net9.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
+    <RootNamespace>Resty</RootNamespace>
     <AssemblyName>resty</AssemblyName>
+    <Title>Resty</Title>
     <AssemblyTitle>Resty - REST API Testing Tool</AssemblyTitle>
     <Product>Resty</Product>
     <Description>Markdown-based REST API testing tool with variable support and response capture</Description>
-    <Version>1.0.0</Version>
+    <Authors>Kody Brown</Authors>
+    <Copyright>Copyright 2025 Kody Brown. All Rights Reserved.</Copyright>
+    <TreatWarningsAsErrors>True</TreatWarningsAsErrors>
   </PropertyGroup>
+
+  <PropertyGroup>
+    <!-- Package/product version (SemVer). -->
+    <Version>0.3.2509.22</Version>
+    <!-- Assembly binding version: keep stable; bump only on breaking changes. -->
+    <AssemblyVersion>0.3.2509.22</AssemblyVersion>
+    <!-- Win32 file version (4-part). Usually matches Version numerically. -->
+    <FileVersion>0.3.2509.22</FileVersion>
+    <!-- Human-readable version (can include pre-release/build metadata). -->
+    <InformationalVersion>0.3.2509.22+$(SourceRevisionId)</InformationalVersion>
+  </PropertyGroup>
+
+  <!-- Publish Settings -->
+  <PropertyGroup Condition="'$(Publish)' == 'true'">
+    <!-- Build configuration.
+         `Debug` includes debug symbols, larger output.
+         `Release` optimizes for performance, smaller size. -->
+    <!-- <Configuration>Release</Configuration> -->
+
+    <!-- Runtime Identifier (RID).
+         Specifies target platform (e.g., `win-x64` for Windows, `linux-x64` for Linux, `osx-x64` for macOS x64, `osx-arm64` for macOS ARM). -->
+    <!-- <RuntimeIdentifier>linux-x64</RuntimeIdentifier> -->
+
+    <!-- Combines all output into a single executable. Simplifies deployment but increases file size slightly.
+         Recommended: Use for easier distribution unless size is critical. -->
+    <!-- <PublishSingleFile>True</PublishSingleFile> -->
+
+    <!-- Includes .NET runtime in output, making it standalone. Increases size but ensures no runtime dependency on target machine.
+         Recommended: When used, .NET doesn't have to be installed on the target OS. -->
+    <!-- <SelfContained>True</SelfContained> -->
+
+    <!-- Removes unused code to reduce binary size. Effective for simple apps but may break if dependencies aren’t trim-compatible.
+         Recommended: Use cautiously, test thoroughly, especially with WebAPI and shared DLLs. -->
+    <!-- <PublishTrimmed>True</PublishTrimmed> -->
+
+    <!-- Directory for publish output. -->
+    <PublishDir>$(MSBuildProjectDirectory)/publish/$(RuntimeIdentifier)/$(Configuration)</PublishDir>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Resty.Core\Resty.Core.csproj" />
+  </ItemGroup>
+
+  <!-- Always include the generated build info file in compilation -->
+  <ItemGroup>
+    <Compile Include="$(IntermediateOutputPath)BuildInfo.g.cs" Visible="false" />
+  </ItemGroup>
+
+  <!-- Generate deterministic BuildDateUtc from Git commit timestamp and emit as a source file -->
+  <Target Name="WriteBuildInfo" BeforeTargets="CoreCompile">
+    <!-- Ask git for strict ISO8601 commit time; ignore errors to keep builds working without git -->
+    <Exec Command="git show -s --format=%%cI HEAD" ConsoleToMSBuild="true" IgnoreExitCode="true">
+      <Output TaskParameter="ConsoleOutput" PropertyName="BuildDateIsoRaw" />
+    </Exec>
+
+    <!-- Trim output; normalize to Z (UTC) -->
+    <PropertyGroup>
+      <_BuildDateIso>$([System.String]::Copy('$(BuildDateIsoRaw)').Trim())</_BuildDateIso>
+    </PropertyGroup>
+    <PropertyGroup Condition="'$(_BuildDateIso)' != ''">
+      <BuildDateUtc>$([System.DateTimeOffset]::Parse('$(_BuildDateIso)').ToUniversalTime().ToString("yyyy'-'MM'-'dd'T'HH':'mm':'ss'Z'"))</BuildDateUtc>
+    </PropertyGroup>
+    <PropertyGroup Condition="'$(BuildDateUtc)' == ''">
+      <BuildDateUtc>&lt;unknown&gt;</BuildDateUtc>
+    </PropertyGroup>
+
+    <!-- Write the attribute into a generated file -->
+    <WriteLinesToFile File="$(IntermediateOutputPath)BuildInfo.g.cs" Overwrite="true" Lines="[assembly: System.Reflection.AssemblyMetadata(&quot;BuildDateUtc&quot;, &quot;$(BuildDateUtc)&quot;)]" />
+  </Target>
 
 </Project>
