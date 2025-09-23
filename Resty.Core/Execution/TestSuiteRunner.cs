@@ -37,8 +37,13 @@ public class TestSuiteRunner
     // Step 1: Load included variables (lowest precedence)
     if (testSuite.IncludeFiles.Count > 0) {
       try {
-        var includedVariables = VariableLoader.LoadIncludedVariables(testSuite.IncludeFiles, testSuite.Directory);
-        variableStore.SetIncludedVariables(includedVariables);
+        var includeYaml = testSuite.IncludeFiles
+          .Where(f => f.EndsWith(".yaml", StringComparison.OrdinalIgnoreCase) || f.EndsWith(".yml", StringComparison.OrdinalIgnoreCase))
+          .ToList();
+        if (includeYaml.Count > 0) {
+          var includedVariables = VariableLoader.LoadIncludedVariables(includeYaml, testSuite.Directory);
+          variableStore.SetIncludedVariables(includedVariables);
+        }
       } catch (Exception ex) {
         // Create a failure result for include loading
         var failureResult = CreateIncludeFailureResult(testSuite, ex);
@@ -52,12 +57,60 @@ public class TestSuiteRunner
 
     // Step 3: Re-parse the file to get YAML blocks and resolve dependencies
     var yamlBlocks = MarkdownParser.FindYamlBlocks(testSuite.FilePath);
+
+    // Track source info (file, line) for all blocks across this file and any included .rest/.resty files
+    var blockSourceMap = new Dictionary<YamlBlock, (string FilePath, int Line)>();
+    foreach (var (line, block) in yamlBlocks) {
+      blockSourceMap[block] = (testSuite.FilePath, line);
+    }
+
     var allBlocks = yamlBlocks.Values.ToList();
+
+    // Global dependencies declared in non-test config blocks
+    var globalDependencies = allBlocks
+      .Where(b => !b.IsTest && (b.Dependencies?.Count > 0 || b.Requires?.Count > 0))
+      .SelectMany(b => (b.Dependencies ?? new List<string>()).Concat(b.Requires ?? new List<string>()))
+      .Select(NormalizeDependencyName)
+      .Distinct(StringComparer.OrdinalIgnoreCase)
+      .ToList();
+
+    // Step 3.1: Load included .rest/.resty files to enable cross-file dependencies
+    var includeResty = testSuite.IncludeFiles
+      .Where(f => f.EndsWith(".rest", StringComparison.OrdinalIgnoreCase) || f.EndsWith(".resty", StringComparison.OrdinalIgnoreCase))
+      .ToList();
+
+    foreach (var inc in includeResty) {
+      var fullPath = Path.IsPathRooted(inc) ? inc : Path.GetFullPath(Path.Combine(testSuite.Directory, inc));
+      if (!File.Exists(fullPath)) {
+        // Skip silently; dependency resolver will surface missing tests if referenced
+        continue;
+      }
+      var incBlocks = MarkdownParser.FindYamlBlocks(fullPath);
+      foreach (var (line, block) in incBlocks) {
+        allBlocks.Add(block);
+        blockSourceMap[block] = (fullPath, line);
+      }
+    }
+
+    // Determine selected tests: only tests defined in this file should be primary selections; dependencies can come from includes
+    var ownTestNames = yamlBlocks.Values.Where(b => b.IsTest && !string.IsNullOrWhiteSpace(b.Test)).Select(b => b.Test!).Distinct().ToList();
+
+    // Augment test requires with global dependencies (apply only to tests in this file)
+    if (globalDependencies.Count > 0) {
+      for (var i = 0; i < allBlocks.Count; i++) {
+        var b = allBlocks[i];
+        if (b.IsTest && !string.IsNullOrWhiteSpace(b.Test) && blockSourceMap.TryGetValue(b, out var src) && string.Equals(src.FilePath, testSuite.FilePath, StringComparison.OrdinalIgnoreCase)) {
+          var requires = (b.Requires ?? new List<string>()).Concat(globalDependencies).Select(NormalizeDependencyName).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+          b = b with { Requires = requires };
+          allBlocks[i] = b;
+        }
+      }
+    }
 
     IReadOnlyList<YamlBlock> resolvedBlocks;
     try {
       var dependencyResolver = new DependencyResolver();
-      resolvedBlocks = dependencyResolver.Resolve(allBlocks);
+      resolvedBlocks = dependencyResolver.Resolve(allBlocks, ownTestNames);
     } catch (MissingDependencyException) {
       throw; // Re-throw to be caught at Program.cs level
     } catch (CircularDependencyException) {
@@ -73,9 +126,11 @@ public class TestSuiteRunner
 
       // Execute test if this block defines one
       if (yamlBlock.IsTest) {
-        // Find the original line number for this block
-        var lineNumber = yamlBlocks.FirstOrDefault(kvp => kvp.Value == yamlBlock).Key;
-        var httpTest = HttpTest.FromYamlBlock(yamlBlock, testSuite.FilePath, lineNumber);
+        // Find the original file and line number for this block
+        if (!blockSourceMap.TryGetValue(yamlBlock, out var src)) {
+          src = (testSuite.FilePath, 1);
+        }
+        var httpTest = HttpTest.FromYamlBlock(yamlBlock, src.FilePath, src.Line);
 
         // Check if test is disabled
         if (yamlBlock.Disabled) {
@@ -128,8 +183,13 @@ public class TestSuiteRunner
     // Step 1: Load included variables (lowest precedence)
     if (testSuite.IncludeFiles.Count > 0) {
       try {
-        var includedVariables = VariableLoader.LoadIncludedVariables(testSuite.IncludeFiles, testSuite.Directory);
-        variableStore.SetIncludedVariables(includedVariables);
+        var includeYaml = testSuite.IncludeFiles
+          .Where(f => f.EndsWith(".yaml", StringComparison.OrdinalIgnoreCase) || f.EndsWith(".yml", StringComparison.OrdinalIgnoreCase))
+          .ToList();
+        if (includeYaml.Count > 0) {
+          var includedVariables = VariableLoader.LoadIncludedVariables(includeYaml, testSuite.Directory);
+          variableStore.SetIncludedVariables(includedVariables);
+        }
       } catch (Exception ex) {
         var failureResult = CreateIncludeFailureResult(testSuite, ex);
         results.Add(failureResult);
@@ -142,7 +202,39 @@ public class TestSuiteRunner
 
     // Step 3: Get all YAML blocks and determine which tests to run
     var yamlBlocks = MarkdownParser.FindYamlBlocks(filePath);
+
+    // Track source info (file, line) for this file and any included .rest/.resty files
+    var blockSourceMap = new Dictionary<YamlBlock, (string FilePath, int Line)>();
+    foreach (var (line, block) in yamlBlocks) {
+      blockSourceMap[block] = (filePath, line);
+    }
+
     var allBlocks = yamlBlocks.Values.ToList();
+
+    // Global dependencies from non-test config blocks
+    var globalDependencies = allBlocks
+      .Where(b => !b.IsTest && (b.Dependencies?.Count > 0 || b.Requires?.Count > 0))
+      .SelectMany(b => (b.Dependencies ?? new List<string>()).Concat(b.Requires ?? new List<string>()))
+      .Select(NormalizeDependencyName)
+      .Distinct(StringComparer.OrdinalIgnoreCase)
+      .ToList();
+
+    // Load included .rest/.resty files so their tests can be resolved as dependencies
+    var includeResty = testSuite.IncludeFiles
+      .Where(f => f.EndsWith(".rest", StringComparison.OrdinalIgnoreCase) || f.EndsWith(".resty", StringComparison.OrdinalIgnoreCase))
+      .ToList();
+
+    foreach (var inc in includeResty) {
+      var fullPath = Path.IsPathRooted(inc) ? inc : Path.GetFullPath(Path.Combine(testSuite.Directory, inc));
+      if (!File.Exists(fullPath)) {
+        continue;
+      }
+      var incBlocks = MarkdownParser.FindYamlBlocks(fullPath);
+      foreach (var (line, block) in incBlocks) {
+        allBlocks.Add(block);
+        blockSourceMap[block] = (fullPath, line);
+      }
+    }
 
     var selectedTestNames = new List<string>();
 
@@ -153,7 +245,7 @@ public class TestSuiteRunner
 
     // Apply pattern filters
     if (testPatternFilter?.Any() == true) {
-      foreach (var block in allBlocks.Where(b => b.IsTest && !string.IsNullOrWhiteSpace(b.Test))) {
+      foreach (var block in yamlBlocks.Values.Where(b => b.IsTest && !string.IsNullOrWhiteSpace(b.Test))) {
         foreach (var pattern in testPatternFilter) {
           if (block.Test!.Contains(pattern, StringComparison.OrdinalIgnoreCase)) {
             selectedTestNames.Add(block.Test);
@@ -163,11 +255,24 @@ public class TestSuiteRunner
       }
     }
 
+    // Augment test requires with global dependencies (apply only to tests in this file)
+    if (globalDependencies.Count > 0) {
+      for (var i = 0; i < allBlocks.Count; i++) {
+        var b = allBlocks[i];
+        if (b.IsTest && !string.IsNullOrWhiteSpace(b.Test) && blockSourceMap.TryGetValue(b, out var src) && string.Equals(src.FilePath, filePath, StringComparison.OrdinalIgnoreCase)) {
+          var requires = (b.Requires ?? new List<string>()).Concat(globalDependencies).Select(NormalizeDependencyName).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+          b = b with { Requires = requires };
+          allBlocks[i] = b;
+        }
+      }
+    }
+
     // Use dependency resolver with selected test names
     IReadOnlyList<YamlBlock> resolvedBlocks;
     try {
       var dependencyResolver = new DependencyResolver();
-      resolvedBlocks = dependencyResolver.Resolve(allBlocks, selectedTestNames.Distinct());
+      var distinctSelected = selectedTestNames.Distinct();
+      resolvedBlocks = dependencyResolver.Resolve(allBlocks, distinctSelected);
     } catch (MissingDependencyException) {
       throw; // Re-throw to be caught at Program.cs level
     } catch (CircularDependencyException) {
@@ -183,9 +288,11 @@ public class TestSuiteRunner
 
       // Execute test if this block defines one
       if (yamlBlock.IsTest) {
-        // Find the original line number for this block
-        var lineNumber = yamlBlocks.FirstOrDefault(kvp => kvp.Value == yamlBlock).Key;
-        var httpTest = HttpTest.FromYamlBlock(yamlBlock, filePath, lineNumber);
+        // Find the original file and line number for this block
+        if (!blockSourceMap.TryGetValue(yamlBlock, out var src)) {
+          src = (filePath, 1);
+        }
+        var httpTest = HttpTest.FromYamlBlock(yamlBlock, src.FilePath, src.Line);
 
         // Check if test is disabled
         if (yamlBlock.Disabled) {
@@ -352,5 +459,11 @@ public class TestSuiteRunner
 
     var now = DateTime.UtcNow;
     return TestResult.Failure(dummyTest, now, now, $"Failed to parse test file: {ex.Message}", ex);
+  }
+  private static string NormalizeDependencyName( string name )
+  {
+    if (string.IsNullOrWhiteSpace(name)) { return string.Empty; }
+    var idx = name.LastIndexOf('?');
+    return idx >= 0 ? name[(idx + 1)..].Trim() : name.Trim();
   }
 }

@@ -81,19 +81,46 @@ The tool will automatically discover both file types in your directories.
 
 Use the `expect:` section to assert response properties. Currently supported:
 - `status`: exact HTTP status code that must be returned. If omitted, Resty uses standard success semantics (2xx).
+- `headers`: a dictionary of expected response headers (names are case-insensitive, values are case-sensitive). Values may contain variables.
+- `values`: a list of JSON value assertions evaluated against the response body.
+
+Each `values` rule has:
+- `key`: JSONPath expression
+- `op`: operation (equals, not_equals, contains, not_contains, startswith, not_startswith, endswith, not_endswith, greater_than, greater_than_or_equal, less_than, less_than_or_equal, exists, not_exists). Aliases: eq, ne, gt, gte, lt, lte, starts_with, ends_with.
+- `value`: expected value (not required for exists/not_exists). Supports `$null`, `$empty`, variables.
+- `store_as`: optional variable name to capture the extracted value.
+- `ignore_case`: optional boolean, default true for string ops.
+
+Use the `expect:` section to assert response properties. Currently supported:
+- `status`: exact HTTP status code that must be returned. If omitted, Resty uses standard success semantics (2xx).
 
 Examples:
 
 ```yaml
-# Pass on 200
+# Pass on 200 and assert values
 expect:
   status: 200
+  headers:
+    Content-Type: application/json; charset=utf-8
+    X-Trace-Id: $trace_id
+  values:
+    - key: $.response.id
+      op: equals
+      value: 12345
+    - key: $.response.success
+      op: equals
+      value: true
+    - key: $.response.name
+      op: contains
+      value: test
 ```
 
 ```yaml
 # Intentionally expect a 404 and still consider the test passed
 expect:
   status: 404
+  headers:
+    Content-Type: application/json
 ```
 
 ## Best Practices
@@ -117,6 +144,47 @@ expect:
 - Use descriptive variable names: `auth_token`, `user_id`, `api_status`
 - Extract only the values you need for subsequent tests
 - Document complex JSONPath expressions with comments
+
+### Request Body
+
+You can supply the body as either a raw string (JSON or otherwise) or as a structured YAML object that will be serialized for you.
+
+- If Content-Type is application/json (or omitted), a structured body will be serialized to JSON.
+- If Content-Type is application/x-www-form-urlencoded and the body is a mapping, it will be URL-encoded as key=value&key2=value2.
+- Structured bodies with any other Content-Type are not allowed and will cause an error.
+
+Examples:
+
+```yaml
+# Raw string JSON
+body: |
+  {
+    "name": "John Doe",
+    "email": "john@example.com"
+  }
+```
+
+```yaml
+# Structured YAML → JSON
+body:
+  name: John Doe
+  email: john@example.com
+```
+
+```yaml
+# application/x-www-form-urlencoded from mapping
+headers:
+  content-type: application/x-www-form-urlencoded
+body:
+  username: $username
+  password: $password
+```
+
+```yaml
+headers:
+  content-type: application/x-www-form-urlencoded
+body: 'username=$username&password=$password'
+```
 
 ### JSONPath Examples
 

@@ -120,6 +120,9 @@ public class XmlOutputFormatter : IOutputFormatter
     var output = new StringBuilder();
 
     output.AppendLine($"Test: {result.Test.Name}");
+    if (!string.IsNullOrWhiteSpace(result.Test.Description)) {
+      output.AppendLine($"Description: {result.Test.Description}");
+    }
     output.AppendLine($"HTTP {result.Test.Method} {result.RequestInfo?.Url ?? result.Test.Url}");
     output.AppendLine($"Duration: {result.Duration.TotalSeconds:F3}s");
 

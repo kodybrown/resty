@@ -68,6 +68,714 @@ public class HttpTestExecutorTests
   }
 
   [Fact]
+  public async Task ExecuteTestAsync_ShouldValidateExpectedHeaders_Pass()
+  {
+    // Arrange
+    var mockHandler = new Mock<HttpMessageHandler>();
+    HttpRequestMessage? capturedRequest = null;
+
+    mockHandler.Protected()
+      .Setup<Task<HttpResponseMessage>>(
+        "SendAsync",
+        ItExpr.IsAny<HttpRequestMessage>(),
+        ItExpr.IsAny<CancellationToken>())
+      .Callback<HttpRequestMessage, CancellationToken>(( req, _ ) => capturedRequest = req)
+      .ReturnsAsync(() =>
+      {
+        var resp = new HttpResponseMessage {
+          StatusCode = HttpStatusCode.OK,
+          Content = new StringContent("{}", Encoding.UTF8, "application/json")
+        };
+        resp.Headers.TryAddWithoutValidation("X-Custom-Header", " expected ");
+        return resp;
+      });
+
+    var httpClient = new HttpClient(mockHandler.Object);
+    var executor = new HttpTestExecutor(httpClient);
+
+    var test = new HttpTest {
+      Name = "test_headers_pass",
+      Method = "GET",
+      Url = "https://api.example.com/h",
+      Expect = new ExpectDefinition {
+        Status = 200,
+        Headers = new Dictionary<string, string> {
+          ["content-type"] = "application/json; charset=utf-8",
+          ["X-CUSTOM-HEADER"] = "expected"
+        }
+      }
+    };
+
+    var variableStore = new VariableStore();
+
+    // Act
+    var result = await executor.ExecuteTestAsync(test, variableStore);
+
+    // Assert
+    Assert.True(result.Passed);
+    Assert.NotNull(capturedRequest);
+  }
+
+  [Fact]
+  public async Task ExecuteTestAsync_ShouldValidateExpectedHeaders_FailOnMissing()
+  {
+    // Arrange
+    var mockHandler = new Mock<HttpMessageHandler>();
+
+    mockHandler.Protected()
+      .Setup<Task<HttpResponseMessage>>(
+        "SendAsync",
+        ItExpr.IsAny<HttpRequestMessage>(),
+        ItExpr.IsAny<CancellationToken>())
+      .ReturnsAsync(() => new HttpResponseMessage {
+        StatusCode = HttpStatusCode.OK,
+        Content = new StringContent("{}", Encoding.UTF8, "application/json")
+      });
+
+    var httpClient = new HttpClient(mockHandler.Object);
+    var executor = new HttpTestExecutor(httpClient);
+
+    var test = new HttpTest {
+      Name = "test_headers_missing",
+      Method = "GET",
+      Url = "https://api.example.com/h",
+      Expect = new ExpectDefinition {
+        Status = 200,
+        Headers = new Dictionary<string, string> {
+          ["X-Required"] = "value"
+        }
+      }
+    };
+
+    var variableStore = new VariableStore();
+
+    // Act
+    var result = await executor.ExecuteTestAsync(test, variableStore);
+
+    // Assert
+    Assert.True(result.Failed);
+    Assert.Contains("missing header 'X-Required'", result.ErrorMessage!);
+  }
+
+  [Fact]
+  public async Task ExecuteTestAsync_ShouldValidateExpectedHeaders_FailOnMismatch()
+  {
+    // Arrange
+    var mockHandler = new Mock<HttpMessageHandler>();
+
+    mockHandler.Protected()
+      .Setup<Task<HttpResponseMessage>>(
+        "SendAsync",
+        ItExpr.IsAny<HttpRequestMessage>(),
+        ItExpr.IsAny<CancellationToken>())
+      .ReturnsAsync(() =>
+      {
+        var resp = new HttpResponseMessage {
+          StatusCode = HttpStatusCode.OK,
+          Content = new StringContent("{}", Encoding.UTF8, "application/json")
+        };
+        resp.Headers.TryAddWithoutValidation("X-Env", "prod");
+        return resp;
+      });
+
+    var httpClient = new HttpClient(mockHandler.Object);
+    var executor = new HttpTestExecutor(httpClient);
+
+    var test = new HttpTest {
+      Name = "test_headers_mismatch",
+      Method = "GET",
+      Url = "https://api.example.com/h",
+      Expect = new ExpectDefinition {
+        Status = 200,
+        Headers = new Dictionary<string, string> {
+          ["X-Env"] = "stage"
+        }
+      }
+    };
+
+    var variableStore = new VariableStore();
+
+    // Act
+    var result = await executor.ExecuteTestAsync(test, variableStore);
+
+    // Assert
+    Assert.True(result.Failed);
+    Assert.Contains("header 'X-Env' expected 'stage' but got 'prod'", result.ErrorMessage!);
+  }
+
+  [Fact]
+  public async Task ExecuteTestAsync_ShouldResolveVariablesInExpectedHeaders()
+  {
+    // Arrange
+    var mockHandler = new Mock<HttpMessageHandler>();
+
+    mockHandler.Protected()
+      .Setup<Task<HttpResponseMessage>>(
+        "SendAsync",
+        ItExpr.IsAny<HttpRequestMessage>(),
+        ItExpr.IsAny<CancellationToken>())
+      .ReturnsAsync(() =>
+      {
+        var resp = new HttpResponseMessage {
+          StatusCode = HttpStatusCode.OK,
+          Content = new StringContent("{}", Encoding.UTF8, "application/json")
+        };
+        resp.Headers.TryAddWithoutValidation("X-Token", "abc123");
+        return resp;
+      });
+
+    var httpClient = new HttpClient(mockHandler.Object);
+    var executor = new HttpTestExecutor(httpClient);
+
+    var test = new HttpTest {
+      Name = "test_headers_vars",
+      Method = "GET",
+      Url = "https://api.example.com/h",
+      Expect = new ExpectDefinition {
+        Status = 200,
+        Headers = new Dictionary<string, string> {
+          ["X-Token"] = "$token_val"
+        }
+      }
+    };
+
+    var variableStore = new VariableStore();
+    variableStore.SetIncludedVariables(new Dictionary<string, object> {
+      ["token_val"] = "abc123"
+    });
+
+    // Act
+    var result = await executor.ExecuteTestAsync(test, variableStore);
+
+    // Assert
+    Assert.True(result.Passed);
+  }
+
+  [Fact]
+  public async Task ExecuteTestAsync_ShouldGateHeaderValidationOnStatus()
+  {
+    // Arrange
+    var mockHandler = new Mock<HttpMessageHandler>();
+
+    mockHandler.Protected()
+      .Setup<Task<HttpResponseMessage>>(
+        "SendAsync",
+        ItExpr.IsAny<HttpRequestMessage>(),
+        ItExpr.IsAny<CancellationToken>())
+      .ReturnsAsync(() => new HttpResponseMessage {
+        StatusCode = HttpStatusCode.BadRequest,
+        ReasonPhrase = "Bad Request",
+        Content = new StringContent("{}", Encoding.UTF8, "application/json")
+      });
+
+    var httpClient = new HttpClient(mockHandler.Object);
+    var executor = new HttpTestExecutor(httpClient);
+
+    var test = new HttpTest {
+      Name = "test_headers_gated",
+      Method = "GET",
+      Url = "https://api.example.com/h",
+      Expect = new ExpectDefinition {
+        Status = 200,
+        Headers = new Dictionary<string, string> {
+          ["X-Token"] = "abc123"
+        }
+      }
+    };
+
+    var variableStore = new VariableStore();
+
+    // Act
+    var result = await executor.ExecuteTestAsync(test, variableStore);
+
+    // Assert
+    Assert.True(result.Failed);
+    Assert.Contains("Expected status 200 but got 400", result.ErrorMessage!);
+  }
+
+  [Fact]
+  public async Task ExecuteTestAsync_ShouldValidateHeadersWhenNoStatusOn2xx()
+  {
+    // Arrange
+    var mockHandler = new Mock<HttpMessageHandler>();
+
+    mockHandler.Protected()
+      .Setup<Task<HttpResponseMessage>>(
+        "SendAsync",
+        ItExpr.IsAny<HttpRequestMessage>(),
+        ItExpr.IsAny<CancellationToken>())
+      .ReturnsAsync(() =>
+      {
+        var resp = new HttpResponseMessage {
+          StatusCode = HttpStatusCode.OK,
+          Content = new StringContent("{}", Encoding.UTF8, "application/json")
+        };
+        resp.Headers.TryAddWithoutValidation("X-Check", "ok");
+        return resp;
+      });
+
+    var httpClient = new HttpClient(mockHandler.Object);
+    var executor = new HttpTestExecutor(httpClient);
+
+    var test = new HttpTest {
+      Name = "test_headers_no_status_2xx",
+      Method = "GET",
+      Url = "https://api.example.com/h",
+      Expect = new ExpectDefinition {
+        // No explicit status, so 2xx semantics apply
+        Headers = new Dictionary<string, string> {
+          ["X-Check"] = "ok"
+        }
+      }
+    };
+
+    var variableStore = new VariableStore();
+
+    // Act
+    var result = await executor.ExecuteTestAsync(test, variableStore);
+
+    // Assert
+    Assert.True(result.Passed);
+  }
+
+  [Fact]
+  public async Task ExecuteTestAsync_ShouldNotValidateHeadersWhenNoStatusAndNon2xx()
+  {
+    // Arrange
+    var mockHandler = new Mock<HttpMessageHandler>();
+
+    mockHandler.Protected()
+      .Setup<Task<HttpResponseMessage>>(
+        "SendAsync",
+        ItExpr.IsAny<HttpRequestMessage>(),
+        ItExpr.IsAny<CancellationToken>())
+      .ReturnsAsync(() => new HttpResponseMessage {
+        StatusCode = HttpStatusCode.NotFound,
+        ReasonPhrase = "Not Found",
+        Content = new StringContent("{}", Encoding.UTF8, "application/json")
+      });
+
+    var httpClient = new HttpClient(mockHandler.Object);
+    var executor = new HttpTestExecutor(httpClient);
+
+    var test = new HttpTest {
+      Name = "test_headers_no_status_non2xx",
+      Method = "GET",
+      Url = "https://api.example.com/h",
+      Expect = new ExpectDefinition {
+        Headers = new Dictionary<string, string> {
+          ["X-Check"] = "ok"
+        }
+      }
+    };
+
+    var variableStore = new VariableStore();
+
+    // Act
+    var result = await executor.ExecuteTestAsync(test, variableStore);
+
+    // Assert
+    Assert.True(result.Failed);
+    Assert.Contains("HTTP 404 Not Found", result.ErrorMessage!);
+  }
+
+  // ===== expect.values tests =====
+
+  [Fact]
+  public async Task ExpectValues_ShouldPass_Equals_String_IgnoreCase_DefaultTrue()
+  {
+    // Arrange
+    var responseJson = "{\"name\":\"TestUser\"}";
+    var mockHandler = new Mock<HttpMessageHandler>();
+    mockHandler.Protected()
+      .Setup<Task<HttpResponseMessage>>("SendAsync", ItExpr.IsAny<HttpRequestMessage>(), ItExpr.IsAny<CancellationToken>())
+      .ReturnsAsync(new HttpResponseMessage {
+        StatusCode = HttpStatusCode.OK,
+        Content = new StringContent(responseJson, Encoding.UTF8, "application/json")
+      });
+
+    var executor = new HttpTestExecutor(new HttpClient(mockHandler.Object));
+
+    var test = new HttpTest {
+      Name = "ev_equals_ignorecase",
+      Method = "GET",
+      Url = "https://api.example.com",
+      Expect = new ExpectDefinition {
+        Status = 200,
+        Values = new List<ValueExpectation> {
+          new() { Key = "$.name", Op = "equals", Value = "testuser" } // ignore_case defaults true
+        }
+      }
+    };
+
+    var store = new VariableStore();
+
+    // Act
+    var result = await executor.ExecuteTestAsync(test, store);
+
+    // Assert
+    Assert.True(result.Passed);
+  }
+
+  [Fact]
+  public async Task ExpectValues_ShouldFail_Equals_String_CaseSensitive()
+  {
+    // Arrange
+    var responseJson = "{\"name\":\"TestUser\"}";
+    var mockHandler = new Mock<HttpMessageHandler>();
+    mockHandler.Protected()
+      .Setup<Task<HttpResponseMessage>>("SendAsync", ItExpr.IsAny<HttpRequestMessage>(), ItExpr.IsAny<CancellationToken>())
+      .ReturnsAsync(new HttpResponseMessage {
+        StatusCode = HttpStatusCode.OK,
+        Content = new StringContent(responseJson, Encoding.UTF8, "application/json")
+      });
+
+    var executor = new HttpTestExecutor(new HttpClient(mockHandler.Object));
+
+    var test = new HttpTest {
+      Name = "ev_equals_casesensitive",
+      Method = "GET",
+      Url = "https://api.example.com",
+      Expect = new ExpectDefinition {
+        Status = 200,
+        Values = new List<ValueExpectation> {
+          new() { Key = "$.name", Op = "equals", Value = "testuser", IgnoreCase = false }
+        }
+      }
+    };
+
+    var store = new VariableStore();
+
+    // Act
+    var result = await executor.ExecuteTestAsync(test, store);
+
+    // Assert
+    Assert.True(result.Failed);
+    Assert.Contains("expected equals", result.ErrorMessage!);
+  }
+
+  [Fact]
+  public async Task ExpectValues_ShouldPass_Numeric_Relational()
+  {
+    // Arrange
+    var responseJson = "{\"age\":25}";
+    var mockHandler = new Mock<HttpMessageHandler>();
+    mockHandler.Protected()
+      .Setup<Task<HttpResponseMessage>>("SendAsync", ItExpr.IsAny<HttpRequestMessage>(), ItExpr.IsAny<CancellationToken>())
+      .ReturnsAsync(new HttpResponseMessage {
+        StatusCode = HttpStatusCode.OK,
+        Content = new StringContent(responseJson, Encoding.UTF8, "application/json")
+      });
+
+    var executor = new HttpTestExecutor(new HttpClient(mockHandler.Object));
+
+    var test = new HttpTest {
+      Name = "ev_numeric_rel",
+      Method = "GET",
+      Url = "https://api.example.com",
+      Expect = new ExpectDefinition {
+        Status = 200,
+        Values = new List<ValueExpectation> {
+          new() { Key = "$.age", Op = "greater_than", Value = 18 },
+          new() { Key = "$.age", Op = "less_than_or_equal", Value = 25 }
+        }
+      }
+    };
+
+    var store = new VariableStore();
+
+    // Act
+    var result = await executor.ExecuteTestAsync(test, store);
+
+    // Assert
+    Assert.True(result.Passed);
+  }
+
+
+  [Fact]
+  public async Task ExpectValues_ShouldHandle_Exists_And_NotExists()
+  {
+    // Arrange
+    var responseJson = "{\"present\":1}";
+    var mockHandler = new Mock<HttpMessageHandler>();
+    mockHandler.Protected()
+      .Setup<Task<HttpResponseMessage>>("SendAsync", ItExpr.IsAny<HttpRequestMessage>(), ItExpr.IsAny<CancellationToken>())
+      .ReturnsAsync(new HttpResponseMessage {
+        StatusCode = HttpStatusCode.OK,
+        Content = new StringContent(responseJson, Encoding.UTF8, "application/json")
+      });
+
+    var executor = new HttpTestExecutor(new HttpClient(mockHandler.Object));
+
+    var test = new HttpTest {
+      Name = "ev_exists",
+      Method = "GET",
+      Url = "https://api.example.com",
+      Expect = new ExpectDefinition {
+        Status = 200,
+        Values = new List<ValueExpectation> {
+          new() { Key = "$.present", Op = "exists" },
+          new() { Key = "$.missing", Op = "not_exists" }
+        }
+      }
+    };
+
+    var store = new VariableStore();
+
+    // Act
+    var result = await executor.ExecuteTestAsync(test, store);
+
+    // Assert
+    Assert.True(result.Passed);
+  }
+
+  [Fact]
+  public async Task ExpectValues_ShouldSupport_Array_AnyMatch()
+  {
+    // Arrange
+    var responseJson = "{\"items\":[{\"name\":\"alpha\"},{\"name\":\"beta-promo\"}]}";
+    var mockHandler = new Mock<HttpMessageHandler>();
+    mockHandler.Protected()
+      .Setup<Task<HttpResponseMessage>>("SendAsync", ItExpr.IsAny<HttpRequestMessage>(), ItExpr.IsAny<CancellationToken>())
+      .ReturnsAsync(new HttpResponseMessage {
+        StatusCode = HttpStatusCode.OK,
+        Content = new StringContent(responseJson, Encoding.UTF8, "application/json")
+      });
+
+    var executor = new HttpTestExecutor(new HttpClient(mockHandler.Object));
+
+    var test = new HttpTest {
+      Name = "ev_array_any",
+      Method = "GET",
+      Url = "https://api.example.com",
+      Expect = new ExpectDefinition {
+        Status = 200,
+        Values = new List<ValueExpectation> {
+          new() { Key = "$.items[*].name", Op = "endswith", Value = "-promo" }
+        }
+      }
+    };
+
+    var store = new VariableStore();
+
+    // Act
+    var result = await executor.ExecuteTestAsync(test, store);
+
+    // Assert
+    Assert.True(result.Passed);
+  }
+
+  [Fact]
+  public async Task ExpectValues_ShouldCapture_With_StoreAs()
+  {
+    // Arrange
+    var responseJson = "{\"response\":{\"id\":12345}}";
+    var mockHandler = new Mock<HttpMessageHandler>();
+    mockHandler.Protected()
+      .Setup<Task<HttpResponseMessage>>("SendAsync", ItExpr.IsAny<HttpRequestMessage>(), ItExpr.IsAny<CancellationToken>())
+      .ReturnsAsync(new HttpResponseMessage {
+        StatusCode = HttpStatusCode.OK,
+        Content = new StringContent(responseJson, Encoding.UTF8, "application/json")
+      });
+
+    var executor = new HttpTestExecutor(new HttpClient(mockHandler.Object));
+
+    var test = new HttpTest {
+      Name = "ev_store_as",
+      Method = "GET",
+      Url = "https://api.example.com",
+      Expect = new ExpectDefinition {
+        Status = 200,
+        Values = new List<ValueExpectation> {
+          new() { Key = "$.response.id", Op = "equals", Value = 12345, StoreAs = "response_id" }
+        }
+      }
+    };
+
+    var store = new VariableStore();
+
+    // Act
+    var result = await executor.ExecuteTestAsync(test, store);
+
+    // Assert
+    Assert.True(result.Passed);
+    Assert.True(result.ExtractedVariables.ContainsKey("response_id"));
+    Assert.Equal(12345L, result.ExtractedVariables["response_id"]); // JToken int → long
+  }
+
+  [Fact]
+  public async Task ExpectValues_ShouldHandle_Null_And_Empty()
+  {
+    // Arrange
+    var responseJson = "{\"nickname\":\"\",\"deleted_at\":null}";
+    var mockHandler = new Mock<HttpMessageHandler>();
+    mockHandler.Protected()
+      .Setup<Task<HttpResponseMessage>>("SendAsync", ItExpr.IsAny<HttpRequestMessage>(), ItExpr.IsAny<CancellationToken>())
+      .ReturnsAsync(new HttpResponseMessage {
+        StatusCode = HttpStatusCode.OK,
+        Content = new StringContent(responseJson, Encoding.UTF8, "application/json")
+      });
+
+    var executor = new HttpTestExecutor(new HttpClient(mockHandler.Object));
+
+    var test = new HttpTest {
+      Name = "ev_null_empty",
+      Method = "GET",
+      Url = "https://api.example.com",
+      Expect = new ExpectDefinition {
+        Status = 200,
+        Values = new List<ValueExpectation> {
+          new() { Key = "$.nickname", Op = "equals", Value = "$empty" },
+          new() { Key = "$.deleted_at", Op = "equals", Value = "$null" }
+        }
+      }
+    };
+
+    var store = new VariableStore();
+
+    // Act
+    var result = await executor.ExecuteTestAsync(test, store);
+
+    // Assert
+    Assert.True(result.Passed);
+  }
+
+  [Fact]
+  public async Task ExecuteTestAsync_ShouldSerializeStructuredJsonBody()
+  {
+    // Arrange
+    var mockHandler = new Mock<HttpMessageHandler>();
+    HttpRequestMessage? capturedRequest = null;
+
+    mockHandler.Protected()
+      .Setup<Task<HttpResponseMessage>>(
+        "SendAsync",
+        ItExpr.IsAny<HttpRequestMessage>(),
+        ItExpr.IsAny<CancellationToken>())
+      .Callback<HttpRequestMessage, CancellationToken>(( req, _ ) => capturedRequest = req)
+      .ReturnsAsync(new HttpResponseMessage {
+        StatusCode = HttpStatusCode.OK,
+        Content = new StringContent("{}", Encoding.UTF8, "application/json")
+      });
+
+    var httpClient = new HttpClient(mockHandler.Object);
+    var executor = new HttpTestExecutor(httpClient);
+
+    var test = new HttpTest {
+      Name = "structured_json_body",
+      Method = "POST",
+      Url = "https://api.example.com/login",
+      ContentType = "application/json",
+      RawBody = new Dictionary<string, object?> {
+        ["username"] = "$user",
+        ["password"] = "$pass"
+      }
+    };
+
+    var store = new VariableStore();
+    store.SetIncludedVariables(new Dictionary<string, object> {
+      ["user"] = "alice",
+      ["pass"] = "secret"
+    });
+
+    // Act
+    var result = await executor.ExecuteTestAsync(test, store);
+
+    // Assert
+    Assert.True(result.Passed);
+    Assert.NotNull(capturedRequest);
+    var sent = await capturedRequest!.Content!.ReadAsStringAsync();
+    Assert.Contains("\"username\":\"alice\"", sent);
+    Assert.Contains("\"password\":\"secret\"", sent);
+  }
+
+  [Fact]
+  public async Task ExecuteTestAsync_ShouldSerializeStructuredFormBody()
+  {
+    // Arrange
+    var mockHandler = new Mock<HttpMessageHandler>();
+    HttpRequestMessage? capturedRequest = null;
+
+    mockHandler.Protected()
+      .Setup<Task<HttpResponseMessage>>(
+        "SendAsync",
+        ItExpr.IsAny<HttpRequestMessage>(),
+        ItExpr.IsAny<CancellationToken>())
+      .Callback<HttpRequestMessage, CancellationToken>(( req, _ ) => capturedRequest = req)
+      .ReturnsAsync(new HttpResponseMessage {
+        StatusCode = HttpStatusCode.OK,
+        Content = new StringContent("{}", Encoding.UTF8, "application/json")
+      });
+
+    var httpClient = new HttpClient(mockHandler.Object);
+    var executor = new HttpTestExecutor(httpClient);
+
+    var test = new HttpTest {
+      Name = "structured_form_body",
+      Method = "POST",
+      Url = "https://api.example.com/login",
+      ContentType = "application/x-www-form-urlencoded",
+      RawBody = new Dictionary<string, object?> {
+        ["username"] = "$user",
+        ["password"] = "$pass"
+      }
+    };
+
+    var store = new VariableStore();
+    store.SetIncludedVariables(new Dictionary<string, object> {
+      ["user"] = "alice",
+      ["pass"] = "secret!"
+    });
+
+    // Act
+    var result = await executor.ExecuteTestAsync(test, store);
+
+    // Assert
+    Assert.True(result.Passed);
+    Assert.NotNull(capturedRequest);
+    var sent = await capturedRequest!.Content!.ReadAsStringAsync();
+    Assert.Contains("username=alice", sent);
+    Assert.Contains("password=secret%21", sent);
+  }
+
+  [Fact]
+  public async Task ExecuteTestAsync_ShouldErrorOnStructuredBodyWithUnsupportedContentType()
+  {
+    // Arrange
+    var mockHandler = new Mock<HttpMessageHandler>();
+
+    mockHandler.Protected()
+      .Setup<Task<HttpResponseMessage>>(
+        "SendAsync",
+        ItExpr.IsAny<HttpRequestMessage>(),
+        ItExpr.IsAny<CancellationToken>())
+      .ReturnsAsync(new HttpResponseMessage {
+        StatusCode = HttpStatusCode.OK,
+        Content = new StringContent("{}", Encoding.UTF8, "application/json")
+      });
+
+    var httpClient = new HttpClient(mockHandler.Object);
+    var executor = new HttpTestExecutor(httpClient);
+
+    var test = new HttpTest {
+      Name = "structured_bad_type",
+      Method = "POST",
+      Url = "https://api.example.com/login",
+      ContentType = "text/plain",
+      RawBody = new Dictionary<string, object?> { ["a"] = 1 }
+    };
+
+    var store = new VariableStore();
+
+    // Act
+    var result = await executor.ExecuteTestAsync(test, store);
+
+    // Assert
+    Assert.True(result.Failed);
+    Assert.Contains("Structured body is only supported", result.ErrorMessage!);
+  }
+
+  [Fact]
   public async Task ExecuteTestAsync_ShouldHandleAuthorizationHeader()
   {
     // Arrange

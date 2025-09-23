@@ -11,14 +11,14 @@ Use the [Resty.VSCode](https://github.com/kodybrown/resty-vscode) extension for 
 
 ## Features
 
-✅ **Human-Readable Test Format** - Write tests in markdown with embedded YAML
-✅ **Variable System** - Support for file variables, environment variables, and response capture
-✅ **Multiple Output Formats** - Console, JSON, JUnit XML, and Interactive HTML reports
-✅ **Test Organization** - Group tests by files and directories
-✅ **Filtering & Selection** - Run specific tests, patterns, or entire suites
-✅ **Response Capture** - Extract values from responses for use in subsequent tests
-✅ **Shared Configuration** - Include common variables and settings across test files
-✅ **Professional Output** - Beautiful console output with colors and detailed reporting
+- ✅ **Human-Readable Test Format** - Write tests in markdown with embedded YAML
+- ✅ **Variable System** - Support for file variables, environment variables, and response capture
+- ✅ **Multiple Output Formats** - Console, JSON, JUnit XML, and Interactive HTML reports
+- ✅ **Test Organization** - Group tests by files and directories
+- ✅ **Filtering & Selection** - Run specific tests, patterns, or entire suites
+- ✅ **Response Capture** - Extract values from responses for use in subsequent tests
+- ✅ **Shared Configuration** - Include common variables and settings across test files
+- ✅ **Professional Output** - Beautiful console output with colors and detailed reporting
 
 ## Quick Start
 
@@ -129,6 +129,11 @@ headers:
 
 ### Request Body
 
+You can write the body as a raw string or as a structured YAML object.
+- application/json (or omitted): structured object is JSON-serialized.
+- application/x-www-form-urlencoded: mapping encodes to key=value pairs.
+- Any other Content-Type with a structured body is an error (must be a string body).
+
 ```yaml
 test: post-data
 post: https://api.example.com/users
@@ -151,6 +156,17 @@ body: |
   }
 expect:
   status: 200
+  headers:
+    Content-Type: application/json; charset=utf-8
+    X-Request-Id: $request_id
+  values:
+    - key: $.auth.user.id
+      op: greater_than
+      value: 0
+    - key: $.auth.user.email
+      op: endswith
+      value: "@example.com"
+
 capture:
   # Extract values from JSON response using JSONPath syntax
   token: $.auth.token
@@ -194,11 +210,36 @@ headers:
 
 ### Include Files
 
+You can declare shared dependencies for the file in the same top configuration block using `dependencies:`.
+These dependencies are tests that must run before any tests in the current file.
+They are most useful when combined with including `.resty` files.
+
+Example:
+
+```yaml
+include:
+  - variables.yaml
+  - variables.private.yaml
+  - auth.resty
+dependencies:
+  - get_token        # test defined in auth.resty
+```
+
+Notes:
+- `dependencies:` applies to the current file’s tests only. It augments each test’s `requires:` internally, so the dependency order is guaranteed.
+- You can also write `auth.resty?get_token`; only the test name portion is used for matching.
+- If multiple configuration blocks specify `dependencies:`, they are merged.
+
 ```yaml
 # Load shared variables from external files
+# - .yaml/.yml files load variables only (with nested includes and precedence)
+# - .rest/.resty files make their tests available for dependency resolution
+#   (so you can `requires:` tests defined in them). Only tests you select in
+#   this file will run; dependencies from included files will run if required.
 include:
   - variables.yaml
   - secrets.yaml
+  - auth.resty   # provides tests like 'get_token' for requires
 ```
 
 ## Command Line Usage
@@ -421,6 +462,11 @@ Capture strictness:
 - For 2xx responses (except 204 No Content), all capture paths are treated as required. If any capture fails (missing path, invalid JSON, empty body), the test fails with a "Capture failed" error.
 - For non-2xx responses and 204 No Content, capture is best-effort and never causes the test to fail.
 
+Header expectations:
+- Names are case-insensitive; values are case-sensitive and compared exactly after trimming whitespace.
+- Values support variable substitution (e.g., `$trace_id`).
+- Header expectations are only validated if the status expectation passes (if present), or if there is no status expectation and the response is 2xx.
+
 Use JSONPath syntax to extract values from JSON responses:
 
 ```yaml
@@ -527,6 +573,21 @@ When you run a specific test, its dependencies are automatically included:
 ```bash
 # This will run 'login' first, then 'update-profile'
 resty test.rest -t update-profile
+
+# Includes: You can include auth.resty in your test file and require its tests
+# In your-file.resty:
+# ```yaml
+# include:
+#   - variables.yaml
+#   - auth.resty
+# ```
+# ```yaml
+# test: protected-endpoint
+# requires: get_token   # defined in auth.resty
+# get: $base_url/api/protected
+# headers:
+#   authorization: Bearer $token
+# ```
 ```
 
 #### Error Handling

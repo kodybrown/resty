@@ -50,6 +50,9 @@ public class JsonTestResult
   [JsonPropertyName("test")]
   public string Test { get; set; } = string.Empty;
 
+  [JsonPropertyName("description")]
+  public string? Description { get; set; }
+
   [JsonPropertyName("file")]
   public string File { get; set; } = string.Empty;
 

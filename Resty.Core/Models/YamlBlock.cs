@@ -27,6 +27,18 @@ public record YamlBlock
   public string? Test { get; init; }
 
   /// <summary>
+  /// Optional human-readable description for the test.
+  /// Included in all report formats.
+  /// </summary>
+  public string? Description { get; init; }
+
+  /// <summary>
+  /// Expectations for the response (e.g., expected status code).
+  /// Matches the 'expect:' YAML section.
+  /// </summary>
+  public ExpectDefinition? Expect { get; init; }
+
+  /// <summary>
   /// HTTP method (if this block defines a test).
   /// Can be GET, POST, PUT, DELETE, PATCH, etc.
   /// </summary>
@@ -158,9 +170,10 @@ public record YamlBlock
   public Dictionary<string, string>? Headers { get; init; }
 
   /// <summary>
-  /// HTTP request body content.
+  /// HTTP request body content. Can be a string (raw) or a structured mapping/array.
+  /// When structured, it will be serialized based on Content-Type.
   /// </summary>
-  public string? Body { get; init; }
+  public object? Body { get; init; }
 
   /// <summary>
   /// Response capture definitions for extracting values from responses.
@@ -188,6 +201,12 @@ public record YamlBlock
   /// Can be a single test name string or an array of test names.
   /// </summary>
   public List<string>? Requires { get; init; }
+
+  /// <summary>
+  /// Non-test block dependencies that must be executed before any tests in this file.
+  /// Intended for use in configuration blocks alongside 'include' to define shared setup.
+  /// </summary>
+  public List<string>? Dependencies { get; init; }
 
   /// <summary>
   /// Determines if this block represents an HTTP test.
@@ -255,4 +274,49 @@ public record ExpectDefinition
   /// Expected HTTP status code (e.g., 200, 404). If not specified, defaults to 2xx success semantics.
   /// </summary>
   public int? Status { get; init; }
+
+  /// <summary>
+  /// Expected response headers (case-insensitive names, case-sensitive values).
+  /// Values may contain variables to be resolved.
+  /// </summary>
+  public Dictionary<string, string>? Headers { get; init; }
+
+  /// <summary>
+  /// Expected JSON value assertions evaluated against the response body.
+  /// </summary>
+  public List<ValueExpectation>? Values { get; init; }
+}
+
+/// <summary>
+/// A rule describing a JSONPath extraction and comparison against an expected value.
+/// </summary>
+public record ValueExpectation
+{
+  /// <summary>
+  /// JSONPath expression to extract value(s) from the response JSON.
+  /// </summary>
+  public string Key { get; init; } = string.Empty;
+
+  /// <summary>
+  /// Operation to perform: equals, not_equals, contains, not_contains, startswith, not_startswith,
+  /// endswith, not_endswith, greater_than, greater_than_or_equal, less_than, less_than_or_equal,
+  /// exists, not_exists. Short aliases are supported (eq, ne, gt, gte, lt, lte, starts_with, ends_with).
+  /// </summary>
+  public string Op { get; init; } = string.Empty;
+
+  /// <summary>
+  /// Expected value to compare with. Optional for exists/not_exists.
+  /// May contain variables, and supports keywords: $null, $empty.
+  /// </summary>
+  public object? Value { get; init; }
+
+  /// <summary>
+  /// When provided, stores the extracted value (first matching) into a variable after evaluation.
+  /// </summary>
+  public string? StoreAs { get; init; }
+
+  /// <summary>
+  /// Whether to ignore case for string comparisons. Default true when null.
+  /// </summary>
+  public bool? IgnoreCase { get; init; }
 }
