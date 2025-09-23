@@ -101,6 +101,7 @@ public record HttpTest
       Headers = block.Headers ?? new Dictionary<string, string>(),
       Body = block.Body,
       Extractors = block.Capture ?? new Dictionary<string, string>(),
+      Expect = block.Expect,
       SourceFile = sourceFile,
       SourceLine = sourceLine,
       Timeout = block.Timeout

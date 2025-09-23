@@ -27,6 +27,12 @@ public record YamlBlock
   public string? Test { get; init; }
 
   /// <summary>
+  /// Expectations for the response (e.g., expected status code).
+  /// Matches the 'expect:' YAML section.
+  /// </summary>
+  public ExpectDefinition? Expect { get; init; }
+
+  /// <summary>
   /// HTTP method (if this block defines a test).
   /// Can be GET, POST, PUT, DELETE, PATCH, etc.
   /// </summary>
