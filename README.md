@@ -199,9 +199,14 @@ headers:
 
 ```yaml
 # Load shared variables from external files
+# - .yaml/.yml files load variables only (with nested includes and precedence)
+# - .rest/.resty files make their tests available for dependency resolution
+#   (so you can `requires:` tests defined in them). Only tests you select in
+#   this file will run; dependencies from included files will run if required.
 include:
   - variables.yaml
   - secrets.yaml
+  - auth.resty   # provides tests like 'get_token' for requires
 ```
 
 ## Command Line Usage
@@ -535,6 +540,21 @@ When you run a specific test, its dependencies are automatically included:
 ```bash
 # This will run 'login' first, then 'update-profile'
 resty test.rest -t update-profile
+
+# Includes: You can include auth.resty in your test file and require its tests
+# In your-file.resty:
+# ```yaml
+# include:
+#   - variables.yaml
+#   - auth.resty
+# ```
+# ```yaml
+# test: protected-endpoint
+# requires: get_token   # defined in auth.resty
+# get: $base_url/api/protected
+# headers:
+#   authorization: Bearer $token
+# ```
 ```
 
 #### Error Handling
