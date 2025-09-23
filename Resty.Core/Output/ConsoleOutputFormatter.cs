@@ -93,7 +93,7 @@ public class ConsoleOutputFormatter : IOutputFormatter
         } else {
           s.Append(' ').Append(result.Test.Name).Append(' ')
            .Append(ConsoleColors.TimeDuration.ToColorVariable())
-           .Append('(').Append($"{result.Duration.TotalSeconds:F3}s").Append('\n');
+           .Append('(').Append($"{result.Duration.TotalSeconds:F3}s)").Append('\n');
         }
 
         // Show error details for failed tests
