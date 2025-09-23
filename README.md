@@ -418,8 +418,8 @@ capture:
 ### Response Extraction
 
 Capture strictness:
-- For 2xx responses (except 201 Created), all capture paths are treated as required. If any capture fails (missing path, invalid JSON, empty body), the test fails with a "Capture failed" error.
-- For non-2xx responses and 201 Created, capture is best-effort and never causes the test to fail.
+- For 2xx responses (except 204 No Content), all capture paths are treated as required. If any capture fails (missing path, invalid JSON, empty body), the test fails with a "Capture failed" error.
+- For non-2xx responses and 204 No Content, capture is best-effort and never causes the test to fail.
 
 Use JSONPath syntax to extract values from JSON responses:
 

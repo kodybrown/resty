@@ -232,9 +232,9 @@ public class HttpTestExecutor
 
   private static bool ShouldTreatCaptureStrict( HttpStatusCode statusCode )
   {
-    // Strict capture for 2xx except 201 (Created)
+    // Strict capture for 2xx except 204 (No Content)
     var code = (int)statusCode;
-    return code >= 200 && code <= 299 && statusCode != HttpStatusCode.Created;
+    return code >= 200 && code <= 299 && statusCode != HttpStatusCode.NoContent;
   }
 
   private static bool IsRetryableStatusCode( HttpStatusCode statusCode )
