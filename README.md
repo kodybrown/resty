@@ -85,7 +85,7 @@ body: |
     "body": "This is a test",
     "userId": 1
   }
-success:
+capture:
   post_id: id
 ``    <-- only using two backticks here to avoid ending the example markdown block
 ```
@@ -120,9 +120,9 @@ get: https://api.example.com # HTTP method and URL
 ```yaml
 test: authenticated-request
 post: https://api.example.com/data
-content-type: application/json
-authorization: Bearer $token
 headers:
+  authorization: Bearer $token
+  content-type: application/json
   X-Custom-Header: custom-value
   User-Agent: MyApp/1.0
 ```
@@ -139,7 +139,7 @@ body: |
   }
 ```
 
-### Response Capture
+### Capture and Expectations
 
 ```yaml
 test: login
@@ -149,11 +149,24 @@ body: |
     "username": "admin",
     "password": "secret"
   }
-success:
+expect:
+  status: 200
+capture:
   # Extract values from JSON response using JSONPath syntax
   token: $.auth.token
   user_id: $.user.id
   expires: $.auth.expires_at
+```
+
+```yaml
+# Example: Expect a 404 but still capture error information
+# The test passes when status is 404 and capture is best-effort.
+test: get-missing-resource
+get: https://api.example.com/missing
+expect:
+  status: 404
+capture:
+  error_message: $.error.message
 ```
 
 ### Variables
@@ -166,7 +179,8 @@ variables:
 
 test: use-variables
 get: $base_url/$api_version/users
-authorization: Bearer $token
+headers:
+  authorization: Bearer $token
 ```
 
 ### Environment Variables
@@ -174,7 +188,8 @@ authorization: Bearer $token
 ```yaml
 test: env-vars
 get: $env:API_BASE_URL/users
-authorization: Bearer $env:API_TOKEN
+headers:
+  authorization: Bearer $env:API_TOKEN
 ```
 
 ### Include Files
@@ -340,7 +355,7 @@ Resty uses JSONPath syntax for extracting values from JSON responses. Here's a c
 
 test: login
 post: /api/auth
-success:
+capture:
   # Extract the token
   auth_token: $.result.token
 
@@ -365,7 +380,7 @@ success:
 
 test: get-users
 get: /api/users
-success:
+capture:
   # Get first user's ID
   first_user_id: $.data.users[0].id
 
@@ -402,10 +417,14 @@ success:
 
 ### Response Extraction
 
+Capture strictness:
+- For 2xx responses (except 201 Created), all capture paths are treated as required. If any capture fails (missing path, invalid JSON, empty body), the test fails with a "Capture failed" error.
+- For non-2xx responses and 201 Created, capture is best-effort and never causes the test to fail.
+
 Use JSONPath syntax to extract values from JSON responses:
 
 ```yaml
-success:
+capture:
   # Basic field extraction
   simple_field: $.name
 
@@ -433,14 +452,17 @@ When a test has dependencies, those dependencies are automatically run first:
 # Test 1: Login (no dependencies)
 test: login
 post: /auth/login
-success:
+capture:
   token: $.access_token
+```
 
+```yaml
 # Test 2: Requires login test to run first
 test: protected-endpoint
 requires: login
 get: /api/protected
-authorization: Bearer $token
+headers:
+  authorization: Bearer $token
 ```
 
 #### Single Dependency
@@ -449,7 +471,8 @@ authorization: Bearer $token
 test: get-profile
 requires: login
 get: /api/profile
-authorization: Bearer $token
+headers:
+  authorization: Bearer $token
 ```
 
 #### Multiple Dependencies
@@ -460,7 +483,8 @@ requires:
   - login
   - get-profile
 put: /api/profile
-authorization: Bearer $token
+headers:
+  authorization: Bearer $token
 body: |
   {
     "name": "Updated Name"
@@ -474,20 +498,26 @@ Dependencies can form chains - Resty automatically resolves the correct executio
 ```yaml
 test: login
 post: /auth/login
-success:
+capture:
   token: $.access_token
+```
 
+```yaml
 test: get-profile
 requires: login
 get: /api/profile
-authorization: Bearer $token
-success:
+headers:
+  authorization: Bearer $token
+capture:
   user_id: $.id
+```
 
+```yaml
 test: update-profile
 requires: get-profile  # This will run login → get-profile → update-profile
 put: /api/profile
-authorization: Bearer $token
+headers:
+  authorization: Bearer $token
 ```
 
 #### Running Specific Tests

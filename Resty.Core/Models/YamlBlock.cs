@@ -1,6 +1,8 @@
 namespace Resty.Core.Models;
 
 using System.Diagnostics.CodeAnalysis;
+using Newtonsoft.Json;
+using YamlDotNet.Serialization;
 
 /// <summary>
 /// Unified model for all YAML code blocks found in Markdown files.
@@ -25,42 +27,133 @@ public record YamlBlock
   public string? Test { get; init; }
 
   /// <summary>
+  /// HTTP method (if this block defines a test).
+  /// Can be GET, POST, PUT, DELETE, PATCH, etc.
+  /// </summary>
+  [YamlIgnore] // Only read from yaml, but never write to yaml.
+  public string Method {
+    get => _method;
+    init => _method = value?.ToUpper() ?? string.Empty;
+  }
+  public string _method = string.Empty;
+
+  /// <summary>
+  /// Target URL (may contain variables to be resolved).
+  /// </summary>
+  [YamlIgnore] // Only read from yaml, but never write to yaml.
+  public string Url { get; init; } = string.Empty;
+
+  /// <summary>
   /// HTTP GET endpoint URL.
   /// </summary>
-  public string? Get { get; init; }
+  [JsonIgnore]
+  public string? Get {
+    get => Method == "GET" ? Url : null;
+    init { Method = "GET"; Url = value ?? string.Empty; }
+  }
 
   /// <summary>
   /// HTTP POST endpoint URL.
   /// </summary>
-  public string? Post { get; init; }
+  [JsonIgnore]
+  public string? Post {
+    get => Method == "POST" ? Url : null;
+    init { Method = "POST"; Url = value ?? string.Empty; }
+  }
 
   /// <summary>
   /// HTTP PUT endpoint URL.
   /// </summary>
-  public string? Put { get; init; }
+  [JsonIgnore]
+  public string? Put {
+    get => Method == "PUT" ? Url : null;
+    init { Method = "PUT"; Url = value ?? string.Empty; }
+  }
 
   /// <summary>
   /// HTTP DELETE endpoint URL.
   /// </summary>
-  public string? Delete { get; init; }
+  [JsonIgnore]
+  public string? Delete {
+    get => Method == "DELETE" ? Url : null;
+    init { Method = "DELETE"; Url = value ?? string.Empty; }
+  }
 
   /// <summary>
   /// HTTP PATCH endpoint URL.
   /// </summary>
-  public string? Patch { get; init; }
+  [JsonIgnore]
+  public string? Patch {
+    get => Method == "PATCH" ? Url : null;
+    init { Method = "PATCH"; Url = value ?? string.Empty; }
+  }
 
   /// <summary>
-  /// Content-Type header value. Defaults to "application/json".
+  /// The content-type header value.
+  /// This is a wrapper around Headers for backward compatibility.
   /// </summary>
-  public string? ContentType { get; init; }
+  [JsonIgnore]
+  [YamlIgnore] // Only read from yaml, but never write to yaml.
+  public string ContentType {
+    get {
+      if (Headers is null || Headers.Count == 0) {
+        return null;
+      }
+      var contentType = Headers.FirstOrDefault(h => string.Equals(h.Key, "Content-Type", StringComparison.OrdinalIgnoreCase));
+      return !string.IsNullOrEmpty(contentType.Key)
+        ? contentType.Value
+        : null;
+    }
+    init {
+      var key = Headers.Keys.FirstOrDefault(k => string.Equals(k, "Content-Type", StringComparison.OrdinalIgnoreCase));
+      if (value == null) {
+        if (key != null) {
+          Headers.Remove(key);
+        }
+      } else {
+        if (key != null) {
+          Headers[key] = value;
+        } else {
+          Headers["Content-Type"] = value;
+        }
+      }
+    }
+  }
 
   /// <summary>
-  /// Authorization header value (e.g., "Bearer token123").
+  /// The authorization header value (may contain variables).
+  /// This is a wrapper around Headers for backward compatibility.
   /// </summary>
-  public string? Authorization { get; init; }
+  [JsonIgnore]
+  [YamlIgnore] // Only read from yaml, but never write to yaml.
+  public string? Authorization {
+    get {
+      if (Headers is null || Headers.Count == 0) {
+        return null;
+      }
+      var (key, value) = Headers.FirstOrDefault(h => string.Equals(h.Key, "Authorization", StringComparison.OrdinalIgnoreCase));
+      return !string.IsNullOrEmpty(key)
+        ? value
+        : null;
+    }
+    init {
+      var key = Headers.Keys.FirstOrDefault(k => string.Equals(k, "Authorization", StringComparison.OrdinalIgnoreCase));
+      if (value == null) {
+        if (key != null) {
+          Headers.Remove(key);
+        }
+      } else {
+        if (key != null) {
+          Headers[key] = value;
+        } else {
+          Headers["Authorization"] = value;
+        }
+      }
+    }
+  }
 
   /// <summary>
-  /// Additional HTTP headers.
+  /// All HTTP headers (may contain variables in values).
   /// </summary>
   public Dictionary<string, string>? Headers { get; init; }
 
@@ -70,10 +163,10 @@ public record YamlBlock
   public string? Body { get; init; }
 
   /// <summary>
-  /// Response capture definitions for extracting values from successful responses.
+  /// Response capture definitions for extracting values from responses.
   /// Key = variable name, Value = JSON path or simple path to extract.
   /// </summary>
-  public Dictionary<string, string>? Success { get; init; }
+  public Dictionary<string, string>? Capture { get; init; }
 
   /// <summary>
   /// Whether this test is disabled and should be skipped during execution.
@@ -100,7 +193,11 @@ public record YamlBlock
   /// Determines if this block represents an HTTP test.
   /// A test must have a test name and exactly one HTTP method.
   /// </summary>
-  public bool IsTest => !string.IsNullOrWhiteSpace(Test) && GetHttpMethods().Count == 1;
+  public bool IsTest
+    => !string.IsNullOrWhiteSpace(Test)
+    // && GetHttpMethods().Count == 1
+    && !string.IsNullOrEmpty(Method)
+    && !string.IsNullOrEmpty(Url);
 
   /// <summary>
   /// Determines if this block contains variables or includes.
@@ -147,4 +244,15 @@ public record YamlBlock
 
     return methods;
   }
+}
+
+/// <summary>
+/// Expectations definition for a test's response.
+/// </summary>
+public record ExpectDefinition
+{
+  /// <summary>
+  /// Expected HTTP status code (e.g., 200, 404). If not specified, defaults to 2xx success semantics.
+  /// </summary>
+  public int? Status { get; init; }
 }

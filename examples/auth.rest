@@ -14,7 +14,9 @@ body: |
     "Username": "$admin_username",
     "Password": "$admin_password"
   }
-success:
+expect:
+  status: 200
+capture:
   # Capture the token from the response (via JSONPath)
   # and store it in a variable for use in subsequent requests.
   token: $.result.token
@@ -24,5 +26,6 @@ success:
 test: verify_token
 requires: auth
 get: $host/api/something-protected
-authorization: Bearer $token
+headers:
+  authorization: Bearer $token
 ```

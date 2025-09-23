@@ -61,7 +61,7 @@ body: |
   {
     "key": "value"
   }
-success:
+capture:
   # Extract response values using JSONPath (note the $ prefix)
   result_id: $.result.id
   status: $.status
@@ -76,6 +76,25 @@ Both `.resty` and `.rest` extensions work identically. Choose based on:
 - **`.rest`** - Shorter, follows REST API naming conventions
 
 The tool will automatically discover both file types in your directories.
+
+## Expectations
+
+Use the `expect:` section to assert response properties. Currently supported:
+- `status`: exact HTTP status code that must be returned. If omitted, Resty uses standard success semantics (2xx).
+
+Examples:
+
+```yaml
+# Pass on 200
+expect:
+  status: 200
+```
+
+```yaml
+# Intentionally expect a 404 and still consider the test passed
+expect:
+  status: 404
+```
 
 ## Best Practices
 
@@ -102,7 +121,7 @@ The tool will automatically discover both file types in your directories.
 ### JSONPath Examples
 
 ```yaml
-success:
+capture:
   # Basic field extraction
   token: $.access_token
 

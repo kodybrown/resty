@@ -48,7 +48,7 @@ public record TestResult
   public string? ResponseBody { get; init; }
 
   /// <summary>
-  /// Variables extracted from the response using success extractors.
+  /// Variables extracted from the response using Capture extractors.
   /// </summary>
   public Dictionary<string, object> ExtractedVariables { get; init; } = new();
 

@@ -47,6 +47,21 @@ public record HttpTest
   public Dictionary<string, string> Extractors { get; init; } = new();
 
   /// <summary>
+  /// Expectations for the response (e.g., expected status code).
+  /// </summary>
+  public ExpectDefinition? Expect { get; init; }
+
+  /// <summary>
+  /// Expected HTTP status code for this test (optional). When set, the test passes
+  /// if and only if the actual response status equals this value. When null,
+  /// default success semantics (2xx) are used.
+  /// </summary>
+  public int? ExpectedStatus {
+    get => Expect?.Status;
+    init => Expect ??= new() { Status = value };
+  }
+
+  /// <summary>
   /// File path where this test was defined (for error reporting).
   /// </summary>
   public string SourceFile { get; init; } = string.Empty;
@@ -85,7 +100,7 @@ public record HttpTest
       Authorization = block.Authorization,
       Headers = block.Headers ?? new Dictionary<string, string>(),
       Body = block.Body,
-      Extractors = block.Success ?? new Dictionary<string, string>(),
+      Extractors = block.Capture ?? new Dictionary<string, string>(),
       SourceFile = sourceFile,
       SourceLine = sourceLine,
       Timeout = block.Timeout

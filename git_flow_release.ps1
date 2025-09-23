@@ -1,6 +1,6 @@
 # Git Flow Release
 
-# variable: "${version}" = 0.2.2509.17
+# variable: "${version}" = 0.3.2509.22
 # variable: "${main_branch}" = main
 # variable: "${dev_branch}" = develop
 
