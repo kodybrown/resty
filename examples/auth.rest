@@ -7,7 +7,7 @@ include:
 ```
 
 ```yaml
-test: auth
+test: auth_login
 post: $host/api/auth
 body: |
   {
@@ -24,7 +24,7 @@ capture:
 
 ```yaml
 test: verify_token
-requires: auth
+requires: auth_login
 get: $host/api/something-protected
 headers:
   authorization: Bearer $token
