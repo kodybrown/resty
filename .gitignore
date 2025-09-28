@@ -1,7 +1,6 @@
 # Development notes
-**/Notes.md
-**/TODO.md
-**/NOTES.txt
+**/*.ground_zero
+**/.plan/
 
 # Private/sensitive files
 #**/*.private.yaml

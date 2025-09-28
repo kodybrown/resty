@@ -30,6 +30,80 @@ To get proper syntax highlighting for `.resty` and `.rest` files in VSCode, add 
 }
 ```
 
+#### JSONPath Functions (postfix, zero-argument, chainable)
+Resty supports a set of simple functions you can append to the end of JSONPath expressions. These are evaluated after the base path is resolved.
+
+Functions:
+- length(), count(), size(): length for arrays and strings (null → 0)
+- empty(): boolean for null/empty array/empty string/empty object
+- type(): returns: array | object | string | number | boolean | null | date
+- sum(), avg(), min(), max(): aggregates on numeric arrays (non-numerics ignored; empty → 0)
+- distinct(): removes duplicates from arrays (order preserved)
+- keys(): object → array of property names
+- values(): object → array of property values
+- to_number(), to_string(), to_boolean(): conversions (arrays mapped element-wise)
+- trim(), lower(), upper(): string utilities (arrays mapped element-wise)
+
+Examples:
+
+```yaml
+# Count items returned
+expect:
+  status: 200
+  values:
+    - key: $.items.length()
+      op: greater_than
+      value: 0
+```
+
+```yaml
+# Ensure properties exist via keys().length()
+expect:
+  status: 200
+  values:
+    - key: $.data.keys().length()
+      op: equals
+      value: 5
+```
+
+```yaml
+# Ensure uniqueness
+expect:
+  status: 200
+  values:
+    - key: $.ids.distinct().length()
+      op: equals
+      value: 10
+```
+
+```yaml
+# Aggregates on arrays
+expect:
+  status: 200
+  values:
+    - key: $.nums.sum()
+      op: equals
+      value: 42
+    - key: $.nums.avg()
+      op: less_than
+      value: 10
+```
+
+```yaml
+# Convert and then aggregate
+expect:
+  status: 200
+  values:
+    - key: $.scores.to_number().max()
+      op: greater_than_or_equal
+      value: 90
+```
+
+Notes:
+- Functions are zero-argument postfix and can be chained.
+- Aggregates ignore non-numeric entries and yield 0 for empty arrays.
+- Objects do not have length; use keys().length() to count properties.
+
 This gives you full markdown syntax highlighting including:
 - ✅ Syntax highlighting for YAML blocks
 - ✅ Markdown formatting (headers, lists, etc.)

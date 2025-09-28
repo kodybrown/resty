@@ -185,6 +185,86 @@ capture:
   error_message: $.error.message
 ```
 
+### JSONPath Functions (postfix, zero-argument, chainable)
+You can append simple functions to the end of your JSONPath and chain them. Resty evaluates the base JSONPath using Newtonsoft and post-processes results with these functions.
+
+Supported functions:
+- length(), count(), size(): length for arrays and strings (null → 0)
+- empty(): boolean for null/empty array/empty string/empty object
+- type(): returns one of: array, object, string, number, boolean, null, date
+- sum(), avg(), min(), max(): numeric aggregates on arrays (non-numerics ignored; empty → 0)
+- distinct(): remove duplicates from arrays (keeps order)
+- keys(): object → array of property names
+- values(): object → array of property values
+- to_number(): convert token(s) to number (arrays mapped element-wise)
+- to_string(): convert token(s) to string (arrays mapped element-wise)
+- to_boolean(): convert token(s) to boolean (arrays mapped element-wise)
+- trim(), lower(), upper(): string transforms (arrays mapped element-wise; non-strings converted first)
+
+Examples:
+
+```yaml
+# Array length
+expect:
+  status: 200
+  values:
+    - key: $.items.length()
+      op: greater_than
+      value: 0
+```
+
+```yaml
+# Object keys count
+expect:
+  status: 200
+  values:
+    - key: $.response.headers.keys().length()
+      op: equals
+      value: 3
+```
+
+```yaml
+# Distinct and aggregates on arrays
+expect:
+  status: 200
+  values:
+    - key: $.nums.distinct().length()
+      op: equals
+      value: 3
+    - key: $.nums.sum()
+      op: greater_than
+      value: 10
+```
+
+```yaml
+# Values() + aggregate on object
+expect:
+  status: 200
+  values:
+    - key: $.metrics.values().avg()
+      op: less_than
+      value: 50
+```
+
+```yaml
+# Type and empty checks
+expect:
+  status: 200
+  values:
+    - key: $.profile.type()
+      op: equals
+      value: object
+    - key: $.tags.empty()
+      op: equals
+      value: true
+```
+
+Notes:
+- Functions are postfix and zero-argument. You can chain them, e.g., $.obj.keys().length().
+- Arrays are not flattened by transforms; map-style functions operate on each element where applicable.
+- For aggregates, non-numeric elements are ignored; empty arrays produce 0.
+- For object property count, use keys().length().
+
 ### Variables
 
 ```yaml

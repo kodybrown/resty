@@ -11,6 +11,44 @@ using Resty.Core.Variables;
 public class HttpTestExecutorTests
 {
   [Fact]
+  public async Task ExpectValues_ShouldSupport_ArrayLengthFunction()
+  {
+    // Arrange
+    var responseJson = "{\"items\":[1,2,3,4]}";
+    var mockHandler = new Mock<HttpMessageHandler>();
+    mockHandler.Protected()
+      .Setup<Task<HttpResponseMessage>>("SendAsync", ItExpr.IsAny<HttpRequestMessage>(), ItExpr.IsAny<CancellationToken>())
+      .ReturnsAsync(new HttpResponseMessage {
+        StatusCode = HttpStatusCode.OK,
+        Content = new StringContent(responseJson, Encoding.UTF8, "application/json")
+      });
+
+    var executor = new HttpTestExecutor(new HttpClient(mockHandler.Object));
+
+    var test = new HttpTest {
+      Name = "ev_array_length",
+      Method = "GET",
+      Url = "https://api.example.com",
+      Expect = new ExpectDefinition {
+        Status = 200,
+        Values = new List<ValueExpectation> {
+          new() { Key = "$.items.length()", Op = "equals", Value = 4 },
+          new() { Key = "$.items.length()", Op = "greater_than", Value = 2 },
+          new() { Key = "$.items.length()", Op = "less_than", Value = 10 }
+        }
+      }
+    };
+
+    var store = new VariableStore();
+
+    // Act
+    var result = await executor.ExecuteTestAsync(test, store);
+
+    // Assert
+    Assert.True(result.Passed);
+  }
+
+  [Fact]
   public async Task ExecuteTestAsync_ShouldResolveVariablesAndExecuteRequest()
   {
     // Arrange
@@ -1109,5 +1147,419 @@ public class HttpTestExecutorTests
     Assert.True(result.Failed);
     Assert.Equal(HttpStatusCode.BadRequest, result.StatusCode);
     Assert.Contains("Expected status 404 but got 400", result.ErrorMessage!);
+  }
+
+  [Fact]
+  public async Task ExpectValues_ShouldSupport_StringLengthFunction()
+  {
+    // Arrange
+    var responseJson = "{\"name\":\"abc\"}";
+    var mockHandler = new Mock<HttpMessageHandler>();
+    mockHandler.Protected()
+      .Setup<Task<HttpResponseMessage>>("SendAsync", ItExpr.IsAny<HttpRequestMessage>(), ItExpr.IsAny<CancellationToken>())
+      .ReturnsAsync(new HttpResponseMessage {
+        StatusCode = HttpStatusCode.OK,
+        Content = new StringContent(responseJson, Encoding.UTF8, "application/json")
+      });
+
+    var executor = new HttpTestExecutor(new HttpClient(mockHandler.Object));
+
+    var test = new HttpTest {
+      Name = "ev_string_length",
+      Method = "GET",
+      Url = "https://api.example.com",
+      Expect = new ExpectDefinition {
+        Status = 200,
+        Values = new List<ValueExpectation> {
+          new() { Key = "$.name.length()", Op = "equals", Value = 3 },
+          new() { Key = "$.name.length()", Op = "greater_than", Value = 0 },
+          new() { Key = "$.name.length()", Op = "less_than", Value = 10 }
+        }
+      }
+    };
+
+    var store = new VariableStore();
+
+    // Act
+    var result = await executor.ExecuteTestAsync(test, store);
+
+    // Assert
+    Assert.True(result.Passed);
+  }
+
+  [Fact]
+  public async Task ExpectValues_ShouldSupport_KeysAndDistinct_LengthChain()
+  {
+    // Arrange
+    var responseJson = "{\"obj\":{\"a\":1,\"b\":2},\"nums\":[1,2,2,3]}";
+    var mockHandler = new Mock<HttpMessageHandler>();
+    mockHandler.Protected()
+      .Setup<Task<HttpResponseMessage>>("SendAsync", ItExpr.IsAny<HttpRequestMessage>(), ItExpr.IsAny<CancellationToken>())
+      .ReturnsAsync(new HttpResponseMessage {
+        StatusCode = HttpStatusCode.OK,
+        Content = new StringContent(responseJson, Encoding.UTF8, "application/json")
+      });
+
+    var executor = new HttpTestExecutor(new HttpClient(mockHandler.Object));
+
+    var test = new HttpTest {
+      Name = "ev_chain_keys_distinct_length",
+      Method = "GET",
+      Url = "https://api.example.com",
+      Expect = new ExpectDefinition {
+        Status = 200,
+        Values = new List<ValueExpectation> {
+          new() { Key = "$.obj.keys().length()", Op = "equals", Value = 2 },
+          new() { Key = "$.nums.distinct().length()", Op = "equals", Value = 3 }
+        }
+      }
+    };
+
+    var store = new VariableStore();
+
+    // Act
+    var result = await executor.ExecuteTestAsync(test, store);
+
+    // Assert
+    Assert.True(result.Passed);
+  }
+
+  [Fact]
+  public async Task ExpectValues_ShouldSupport_NumericAggregates_OnArrays()
+  {
+    // Arrange
+    var responseJson = "{\"nums\":[1,2,3]}";
+    var mockHandler = new Mock<HttpMessageHandler>();
+    mockHandler.Protected()
+      .Setup<Task<HttpResponseMessage>>("SendAsync", ItExpr.IsAny<HttpRequestMessage>(), ItExpr.IsAny<CancellationToken>())
+      .ReturnsAsync(new HttpResponseMessage {
+        StatusCode = HttpStatusCode.OK,
+        Content = new StringContent(responseJson, Encoding.UTF8, "application/json")
+      });
+
+    var executor = new HttpTestExecutor(new HttpClient(mockHandler.Object));
+
+    var test = new HttpTest {
+      Name = "ev_numeric_aggregates",
+      Method = "GET",
+      Url = "https://api.example.com",
+      Expect = new ExpectDefinition {
+        Status = 200,
+        Values = new List<ValueExpectation> {
+          new() { Key = "$.nums.sum()", Op = "equals", Value = 6 },
+          new() { Key = "$.nums.avg()", Op = "equals", Value = 2 },
+          new() { Key = "$.nums.min()", Op = "equals", Value = 1 },
+          new() { Key = "$.nums.max()", Op = "equals", Value = 3 }
+        }
+      }
+    };
+
+    var store = new VariableStore();
+
+    // Act
+    var result = await executor.ExecuteTestAsync(test, store);
+
+    // Assert
+    Assert.True(result.Passed);
+  }
+
+  [Fact]
+  public async Task ExpectValues_ShouldSupport_Empty_Function()
+  {
+    var responseJson = "{\"a\":[],\"b\":\"\",\"c\":null,\"d\":{},\"e\":[1]}";
+    var mockHandler = new Mock<HttpMessageHandler>();
+    mockHandler.Protected()
+      .Setup<Task<HttpResponseMessage>>("SendAsync", ItExpr.IsAny<HttpRequestMessage>(), ItExpr.IsAny<CancellationToken>())
+      .ReturnsAsync(new HttpResponseMessage {
+        StatusCode = HttpStatusCode.OK,
+        Content = new StringContent(responseJson, Encoding.UTF8, "application/json")
+      });
+
+    var executor = new HttpTestExecutor(new HttpClient(mockHandler.Object));
+
+    var test = new HttpTest {
+      Name = "ev_empty",
+      Method = "GET",
+      Url = "https://api.example.com",
+      Expect = new ExpectDefinition {
+        Status = 200,
+        Values = new List<ValueExpectation> {
+          new() { Key = "$.a.empty()", Op = "equals", Value = true },
+          new() { Key = "$.b.empty()", Op = "equals", Value = true },
+          new() { Key = "$.c.empty()", Op = "equals", Value = true },
+          new() { Key = "$.d.empty()", Op = "equals", Value = true },
+          new() { Key = "$.e.empty()", Op = "equals", Value = false }
+        }
+      }
+    };
+
+    var store = new VariableStore();
+    var result = await executor.ExecuteTestAsync(test, store);
+    Assert.True(result.Passed);
+  }
+
+  [Fact]
+  public async Task ExpectValues_ShouldSupport_Type_Function()
+  {
+    var responseJson = "{\"arr\":[1],\"obj\":{\"x\":1},\"str\":\"hi\",\"num\":1,\"bool\":true,\"nul\":null}";
+    var mockHandler = new Mock<HttpMessageHandler>();
+    mockHandler.Protected()
+      .Setup<Task<HttpResponseMessage>>("SendAsync", ItExpr.IsAny<HttpRequestMessage>(), ItExpr.IsAny<CancellationToken>())
+      .ReturnsAsync(new HttpResponseMessage {
+        StatusCode = HttpStatusCode.OK,
+        Content = new StringContent(responseJson, Encoding.UTF8, "application/json")
+      });
+
+    var executor = new HttpTestExecutor(new HttpClient(mockHandler.Object));
+
+    var test = new HttpTest {
+      Name = "ev_type",
+      Method = "GET",
+      Url = "https://api.example.com",
+      Expect = new ExpectDefinition {
+        Status = 200,
+        Values = new List<ValueExpectation> {
+          new() { Key = "$.arr.type()", Op = "equals", Value = "array" },
+          new() { Key = "$.obj.type()", Op = "equals", Value = "object" },
+          new() { Key = "$.str.type()", Op = "equals", Value = "string" },
+          new() { Key = "$.num.type()", Op = "equals", Value = "number" },
+          new() { Key = "$.bool.type()", Op = "equals", Value = "boolean" },
+          new() { Key = "$.nul.type()", Op = "equals", Value = "null" }
+        }
+      }
+    };
+
+    var store = new VariableStore();
+    var result = await executor.ExecuteTestAsync(test, store);
+    Assert.True(result.Passed);
+  }
+
+  [Fact]
+  public async Task ExpectValues_ShouldSupport_Count_And_Size_Aliases()
+  {
+    var responseJson = "{\"items\":[1,2,3]}";
+    var mockHandler = new Mock<HttpMessageHandler>();
+    mockHandler.Protected()
+      .Setup<Task<HttpResponseMessage>>("SendAsync", ItExpr.IsAny<HttpRequestMessage>(), ItExpr.IsAny<CancellationToken>())
+      .ReturnsAsync(new HttpResponseMessage {
+        StatusCode = HttpStatusCode.OK,
+        Content = new StringContent(responseJson, Encoding.UTF8, "application/json")
+      });
+
+    var executor = new HttpTestExecutor(new HttpClient(mockHandler.Object));
+
+    var test = new HttpTest {
+      Name = "ev_count_size",
+      Method = "GET",
+      Url = "https://api.example.com",
+      Expect = new ExpectDefinition {
+        Status = 200,
+        Values = new List<ValueExpectation> {
+          new() { Key = "$.items.count()", Op = "equals", Value = 3 },
+          new() { Key = "$.items.size()", Op = "equals", Value = 3 }
+        }
+      }
+    };
+
+    var store = new VariableStore();
+    var result = await executor.ExecuteTestAsync(test, store);
+    Assert.True(result.Passed);
+  }
+
+  [Fact]
+  public async Task ExpectValues_ShouldSupport_Values_And_Aggregates_Chaining()
+  {
+    var responseJson = "{\"obj\":{\"x\":1,\"y\":2,\"z\":3}}";
+    var mockHandler = new Mock<HttpMessageHandler>();
+    mockHandler.Protected()
+      .Setup<Task<HttpResponseMessage>>("SendAsync", ItExpr.IsAny<HttpRequestMessage>(), ItExpr.IsAny<CancellationToken>())
+      .ReturnsAsync(new HttpResponseMessage {
+        StatusCode = HttpStatusCode.OK,
+        Content = new StringContent(responseJson, Encoding.UTF8, "application/json")
+      });
+
+    var executor = new HttpTestExecutor(new HttpClient(mockHandler.Object));
+
+    var test = new HttpTest {
+      Name = "ev_values_aggregates",
+      Method = "GET",
+      Url = "https://api.example.com",
+      Expect = new ExpectDefinition {
+        Status = 200,
+        Values = new List<ValueExpectation> {
+          new() { Key = "$.obj.values().sum()", Op = "equals", Value = 6 },
+          new() { Key = "$.obj.values().avg()", Op = "equals", Value = 2 },
+          new() { Key = "$.obj.values().min()", Op = "equals", Value = 1 },
+          new() { Key = "$.obj.values().max()", Op = "equals", Value = 3 }
+        }
+      }
+    };
+
+    var store = new VariableStore();
+    var result = await executor.ExecuteTestAsync(test, store);
+    Assert.True(result.Passed);
+  }
+
+  [Fact]
+  public async Task ExpectValues_ShouldSupport_ToNumber_On_StringArray_Then_Sum()
+  {
+    var responseJson = "{\"nums\":[\"1\",\"2\",\"3\"]}";
+    var mockHandler = new Mock<HttpMessageHandler>();
+    mockHandler.Protected()
+      .Setup<Task<HttpResponseMessage>>("SendAsync", ItExpr.IsAny<HttpRequestMessage>(), ItExpr.IsAny<CancellationToken>())
+      .ReturnsAsync(new HttpResponseMessage {
+        StatusCode = HttpStatusCode.OK,
+        Content = new StringContent(responseJson, Encoding.UTF8, "application/json")
+      });
+
+    var executor = new HttpTestExecutor(new HttpClient(mockHandler.Object));
+
+    var test = new HttpTest {
+      Name = "ev_to_number_sum",
+      Method = "GET",
+      Url = "https://api.example.com",
+      Expect = new ExpectDefinition {
+        Status = 200,
+        Values = new List<ValueExpectation> {
+          new() { Key = "$.nums.to_number().sum()", Op = "equals", Value = 6 }
+        }
+      }
+    };
+
+    var store = new VariableStore();
+    var result = await executor.ExecuteTestAsync(test, store);
+    Assert.True(result.Passed);
+  }
+
+  [Fact]
+  public async Task ExpectValues_ShouldSupport_ToString_On_Number()
+  {
+    var responseJson = "{\"val\":123}";
+    var mockHandler = new Mock<HttpMessageHandler>();
+    mockHandler.Protected()
+      .Setup<Task<HttpResponseMessage>>("SendAsync", ItExpr.IsAny<HttpRequestMessage>(), ItExpr.IsAny<CancellationToken>())
+      .ReturnsAsync(new HttpResponseMessage {
+        StatusCode = HttpStatusCode.OK,
+        Content = new StringContent(responseJson, Encoding.UTF8, "application/json")
+      });
+
+    var executor = new HttpTestExecutor(new HttpClient(mockHandler.Object));
+
+    var test = new HttpTest {
+      Name = "ev_to_string_length",
+      Method = "GET",
+      Url = "https://api.example.com",
+      Expect = new ExpectDefinition {
+        Status = 200,
+        Values = new List<ValueExpectation> {
+          new() { Key = "$.val.to_string().length()", Op = "equals", Value = 3 }
+        }
+      }
+    };
+
+    var store = new VariableStore();
+    var result = await executor.ExecuteTestAsync(test, store);
+    Assert.True(result.Passed);
+  }
+
+  [Fact]
+  public async Task ExpectValues_ShouldSupport_ToBoolean_On_Strings_And_Numbers()
+  {
+    var responseJson = "{\"t1\":\"true\",\"t2\":\"1\",\"f1\":\"false\",\"f2\":\"0\"}";
+    var mockHandler = new Mock<HttpMessageHandler>();
+    mockHandler.Protected()
+      .Setup<Task<HttpResponseMessage>>("SendAsync", ItExpr.IsAny<HttpRequestMessage>(), ItExpr.IsAny<CancellationToken>())
+      .ReturnsAsync(new HttpResponseMessage {
+        StatusCode = HttpStatusCode.OK,
+        Content = new StringContent(responseJson, Encoding.UTF8, "application/json")
+      });
+
+    var executor = new HttpTestExecutor(new HttpClient(mockHandler.Object));
+
+    var test = new HttpTest {
+      Name = "ev_to_boolean",
+      Method = "GET",
+      Url = "https://api.example.com",
+      Expect = new ExpectDefinition {
+        Status = 200,
+        Values = new List<ValueExpectation> {
+          new() { Key = "$.t1.to_boolean()", Op = "equals", Value = true },
+          new() { Key = "$.t2.to_boolean()", Op = "equals", Value = true },
+          new() { Key = "$.f1.to_boolean()", Op = "equals", Value = false },
+          new() { Key = "$.f2.to_boolean()", Op = "equals", Value = false }
+        }
+      }
+    };
+
+    var store = new VariableStore();
+    var result = await executor.ExecuteTestAsync(test, store);
+    Assert.True(result.Passed);
+  }
+
+  [Fact]
+  public async Task ExpectValues_ShouldSupport_String_Transforms_Trim_Lower_Upper()
+  {
+    var responseJson = "{\"s\":\" A b C \"}";
+    var mockHandler = new Mock<HttpMessageHandler>();
+    mockHandler.Protected()
+      .Setup<Task<HttpResponseMessage>>("SendAsync", ItExpr.IsAny<HttpRequestMessage>(), ItExpr.IsAny<CancellationToken>())
+      .ReturnsAsync(new HttpResponseMessage {
+        StatusCode = HttpStatusCode.OK,
+        Content = new StringContent(responseJson, Encoding.UTF8, "application/json")
+      });
+
+    var executor = new HttpTestExecutor(new HttpClient(mockHandler.Object));
+
+    var test = new HttpTest {
+      Name = "ev_string_transforms",
+      Method = "GET",
+      Url = "https://api.example.com",
+      Expect = new ExpectDefinition {
+        Status = 200,
+        Values = new List<ValueExpectation> {
+          new() { Key = "$.s.trim()", Op = "equals", Value = "A b C" },
+          new() { Key = "$.s.lower()", Op = "equals", Value = " a b c " },
+          new() { Key = "$.s.upper()", Op = "equals", Value = " A B C " }
+        }
+      }
+    };
+
+    var store = new VariableStore();
+    var result = await executor.ExecuteTestAsync(test, store);
+    Assert.True(result.Passed);
+  }
+
+  [Fact]
+  public async Task ExpectValues_ShouldSupport_Aggregates_With_Mixed_Types()
+  {
+    var responseJson = "{\"nums\":[1,\"2\",null,\"bad\",3]}";
+    var mockHandler = new Mock<HttpMessageHandler>();
+    mockHandler.Protected()
+      .Setup<Task<HttpResponseMessage>>("SendAsync", ItExpr.IsAny<HttpRequestMessage>(), ItExpr.IsAny<CancellationToken>())
+      .ReturnsAsync(new HttpResponseMessage {
+        StatusCode = HttpStatusCode.OK,
+        Content = new StringContent(responseJson, Encoding.UTF8, "application/json")
+      });
+
+    var executor = new HttpTestExecutor(new HttpClient(mockHandler.Object));
+
+    var test = new HttpTest {
+      Name = "ev_agg_mixed",
+      Method = "GET",
+      Url = "https://api.example.com",
+      Expect = new ExpectDefinition {
+        Status = 200,
+        Values = new List<ValueExpectation> {
+          new() { Key = "$.nums.sum()", Op = "equals", Value = 6 },
+          new() { Key = "$.nums.avg()", Op = "equals", Value = 2 },
+          new() { Key = "$.nums.min()", Op = "equals", Value = 1 },
+          new() { Key = "$.nums.max()", Op = "equals", Value = 3 }
+        }
+      }
+    };
+
+    var store = new VariableStore();
+    var result = await executor.ExecuteTestAsync(test, store);
+    Assert.True(result.Passed);
   }
 }

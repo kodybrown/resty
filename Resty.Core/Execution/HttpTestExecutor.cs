@@ -4,6 +4,7 @@ using System.Collections;
 using System.Net;
 using System.Net.Sockets;
 using System.Text;
+using System.Text.RegularExpressions;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using Resty.Core.Models;
@@ -606,13 +607,278 @@ public class HttpTestExecutor
 
   private static IEnumerable<JToken> SelectTokensSafe( JToken json, string jsonPath )
   {
-    try {
-      return json.SelectTokens(jsonPath) ?? Enumerable.Empty<JToken>();
-    } catch {
-      // Fallback to single token selection to handle bad paths
-      var t = json.SelectToken(jsonPath);
-      return t != null ? new[] { t } : Enumerable.Empty<JToken>();
+    // Support a simple chain of zero-argument postfix functions applied to the result of a base JSONPath.
+    // Example: $.items.keys().length() → evaluate $.items, then apply keys(), then apply length().
+    // This keeps compatibility with Newtonsoft's JSONPath while enabling simple function chaining.
+
+    // Parse trailing chain of .func() segments, right-to-left, collecting in left-to-right order.
+    var funcs = new List<string>();
+    var remaining = jsonPath;
+    while (true) {
+      var m = Regex.Match(remaining, @"\.(\w+)\(\)$");
+      if (!m.Success) { break; }
+      var name = (m.Groups[1].Value ?? string.Empty).Trim().ToLowerInvariant();
+      funcs.Insert(0, name);
+      remaining = remaining.Substring(0, remaining.Length - m.Length);
     }
+
+    IEnumerable<JToken> BaseSelect(string path)
+    {
+      try {
+        return json.SelectTokens(path) ?? Enumerable.Empty<JToken>();
+      } catch {
+        // Fallback to single token selection to handle bad paths
+        var t = json.SelectToken(path);
+        return t != null ? new[] { t } : Enumerable.Empty<JToken>();
+      }
+    }
+
+    // If no trailing functions, use the legacy logic.
+    if (funcs.Count == 0) {
+      return BaseSelect(jsonPath);
+    }
+
+    // Evaluate base tokens, then apply each function in order.
+    var tokens = BaseSelect(remaining).ToList();
+
+    foreach (var f in funcs) {
+      tokens = ApplyJsonPathFunction(f, tokens).ToList();
+    }
+
+    return tokens;
+  }
+
+  private static IEnumerable<JToken> ApplyJsonPathFunction( string func, IEnumerable<JToken> tokens )
+  {
+    switch (func) {
+      // length-family → numeric scalar
+      case "length":
+      case "count":
+      case "size":
+        return tokens.Select(t => new JValue(ComputeLength(t)));
+
+      // empty → boolean scalar
+      case "empty":
+        return tokens.Select(t => new JValue(IsEmpty(t)));
+
+      // type → string scalar
+      case "type":
+        return tokens.Select(t => new JValue(GetTypeName(t)));
+
+      // Aggregates on arrays → numeric scalar
+      case "sum":
+        return tokens.Select(t => new JValue(AggregateNumbers(t, Aggregation.Sum)));
+      case "avg":
+        return tokens.Select(t => new JValue(AggregateNumbers(t, Aggregation.Avg)));
+      case "min":
+        return tokens.Select(t => new JValue(AggregateNumbers(t, Aggregation.Min)));
+      case "max":
+        return tokens.Select(t => new JValue(AggregateNumbers(t, Aggregation.Max)));
+
+      // Array/object transforms → array token
+      case "distinct":
+        return tokens.Select(t => MakeDistinctArray(t));
+      case "keys":
+        return tokens.Select(t => GetObjectKeysArray(t));
+      case "values":
+        return tokens.Select(t => GetObjectValuesArray(t));
+
+      // Conversions → scalar or mapped array (kept as token, not flattened)
+      case "to_number":
+        return tokens.Select(t => ToNumberToken(t));
+      case "to_string":
+        return tokens.Select(t => ToStringToken(t));
+      case "to_boolean":
+        return tokens.Select(t => ToBooleanToken(t));
+
+      // String utilities
+      case "trim":
+        return tokens.Select(t => StringTransformToken(t, s => s?.Trim() ?? string.Empty));
+      case "lower":
+        return tokens.Select(t => StringTransformToken(t, s => (s ?? string.Empty).ToLowerInvariant()));
+      case "upper":
+        return tokens.Select(t => StringTransformToken(t, s => (s ?? string.Empty).ToUpperInvariant()));
+
+      default:
+        // Unknown function → return tokens unchanged to avoid hard failures
+        return tokens;
+    }
+  }
+
+  private enum Aggregation { Sum, Avg, Min, Max }
+
+  private static int ComputeLength( JToken t )
+  {
+    return t.Type switch {
+      JTokenType.Array => ((JArray)t).Count,
+      JTokenType.String => (t.Value<string>() ?? string.Empty).Length,
+      JTokenType.Null => 0,
+      _ => 0
+    };
+  }
+
+  private static bool IsEmpty( JToken t )
+  {
+    return t.Type switch {
+      JTokenType.Null => true,
+      JTokenType.Array => ((JArray)t).Count == 0,
+      JTokenType.String => string.IsNullOrEmpty(t.Value<string>()),
+      JTokenType.Object => !((JObject)t).Properties().Any(),
+      _ => false
+    };
+  }
+
+  private static string GetTypeName( JToken t )
+  {
+    return t.Type switch {
+      JTokenType.Array => "array",
+      JTokenType.Object => "object",
+      JTokenType.String => "string",
+      JTokenType.Integer => "number",
+      JTokenType.Float => "number",
+      JTokenType.Boolean => "boolean",
+      JTokenType.Null => "null",
+      JTokenType.Date => "date",
+      _ => t.Type.ToString().ToLowerInvariant()
+    };
+  }
+
+  private static double AggregateNumbers( JToken t, Aggregation agg )
+  {
+    if (t.Type != JTokenType.Array) { return 0d; }
+    var arr = (JArray)t;
+    var values = new List<double>();
+    foreach (var item in arr) {
+      if (TryParseDoubleFromToken(item, out var d)) {
+        values.Add(d);
+      }
+    }
+    if (values.Count == 0) { return 0d; }
+    return agg switch {
+      Aggregation.Sum => values.Sum(),
+      Aggregation.Avg => values.Average(),
+      Aggregation.Min => values.Min(),
+      Aggregation.Max => values.Max(),
+      _ => 0d
+    };
+  }
+
+  private static bool TryParseDoubleFromToken( JToken t, out double d )
+  {
+    d = 0d;
+    switch (t.Type) {
+      case JTokenType.Integer:
+        d = t.Value<long>();
+        return true;
+      case JTokenType.Float:
+        d = t.Value<double>();
+        return true;
+      case JTokenType.Boolean:
+        d = t.Value<bool>() ? 1d : 0d;
+        return true;
+      case JTokenType.String:
+        return double.TryParse(t.Value<string>(), System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out d);
+      default:
+        return false;
+    }
+  }
+
+  private static JToken MakeDistinctArray( JToken t )
+  {
+    if (t.Type != JTokenType.Array) { return t; }
+    var arr = (JArray)t;
+    var distinct = arr.Distinct(new JTokenEqualityComparer());
+    return new JArray(distinct);
+  }
+
+  private static JToken GetObjectKeysArray( JToken t )
+  {
+    if (t.Type != JTokenType.Object) { return t; }
+    var obj = (JObject)t;
+    return new JArray(obj.Properties().Select(p => new JValue(p.Name)));
+  }
+
+  private static JToken GetObjectValuesArray( JToken t )
+  {
+    if (t.Type != JTokenType.Object) { return t; }
+    var obj = (JObject)t;
+    return new JArray(obj.Properties().Select(p => p.Value));
+  }
+
+  private static JToken ToNumberToken( JToken t )
+  {
+    if (t.Type == JTokenType.Array) {
+      // Map array elements to numbers without flattening
+      var arr = (JArray)t;
+      var mapped = new JArray(arr.Select(e => ToNumberToken(e)));
+      return mapped;
+    }
+
+    switch (t.Type) {
+      case JTokenType.Integer:
+      case JTokenType.Float:
+        return t;
+      case JTokenType.Boolean:
+        return new JValue(t.Value<bool>() ? 1d : 0d);
+      case JTokenType.Null:
+        return new JValue(0d);
+      default:
+        var s = t.Type == JTokenType.String ? t.Value<string>() : t.ToString(Newtonsoft.Json.Formatting.None);
+        if (double.TryParse(s, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var d)) {
+          return new JValue(d);
+        }
+        return new JValue(double.NaN);
+    }
+  }
+
+  private static JToken ToStringToken( JToken t )
+  {
+    if (t.Type == JTokenType.Array) {
+      var arr = (JArray)t;
+      return new JArray(arr.Select(e => ToStringToken(e)));
+    }
+    if (t.Type == JTokenType.String) { return t; }
+    if (t.Type == JTokenType.Null) { return new JValue(string.Empty); }
+    return new JValue(t.ToString(Newtonsoft.Json.Formatting.None));
+  }
+
+  private static JToken ToBooleanToken( JToken t )
+  {
+    if (t.Type == JTokenType.Array) {
+      var arr = (JArray)t;
+      return new JArray(arr.Select(e => ToBooleanToken(e)));
+    }
+
+    switch (t.Type) {
+      case JTokenType.Boolean:
+        return t;
+      case JTokenType.Integer:
+        return new JValue(t.Value<long>() != 0);
+      case JTokenType.Float:
+        return new JValue(Math.Abs(t.Value<double>()) > double.Epsilon);
+      case JTokenType.String:
+        var s = t.Value<string>() ?? string.Empty;
+        if (bool.TryParse(s, out var b)) { return new JValue(b); }
+        if (double.TryParse(s, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var d)) {
+          return new JValue(Math.Abs(d) > double.Epsilon);
+        }
+        return new JValue(false);
+      case JTokenType.Null:
+        return new JValue(false);
+      default:
+        return new JValue(true); // objects become truey
+    }
+  }
+
+  private static JToken StringTransformToken( JToken t, Func<string?, string> transform )
+  {
+    if (t.Type == JTokenType.Array) {
+      var arr = (JArray)t;
+      return new JArray(arr.Select(e => StringTransformToken(e, transform)));
+    }
+
+    var s = t.Type == JTokenType.String ? t.Value<string>() : t.ToString(Newtonsoft.Json.Formatting.None);
+    return new JValue(transform(s));
   }
 
   private static (object? Value, bool IsNull, bool IsEmpty) ResolveExpectedValue( object? raw, VariableStore vars )
