@@ -1,0 +1,25 @@
+# Inline mock-only test (no method)
+
+```yaml
+variables:
+  status_ok: 200
+```
+
+```yaml
+# No get/post; response is fully defined inline
+# This validates that tests can be purely mocked
+test: inline_only_mock
+mock_only: true
+mock:
+  status: $status_ok
+  headers:
+    content-type: application/json
+  body:
+    message: hello
+expect:
+  status: 200
+  values:
+    - key: $.message
+      op: equals
+      value: hello
+```

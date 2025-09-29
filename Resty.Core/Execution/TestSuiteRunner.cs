@@ -58,6 +58,33 @@ public class TestSuiteRunner
     // Step 3: Re-parse the file to get YAML blocks and resolve dependencies
     var yamlBlocks = MarkdownParser.FindYamlBlocks(testSuite.FilePath);
 
+    // Collect file-level mocks and mocks_files from this file (seed with suite-level aggregates)
+    var fileMocks = new List<FileMockDefinition>();
+    var fileMockFiles = new List<string>();
+    if (testSuite.Mocks?.Count > 0) { fileMocks.AddRange(testSuite.Mocks); }
+    if (testSuite.MocksFiles?.Count > 0) { fileMockFiles.AddRange(testSuite.MocksFiles); }
+    foreach (var (_, block) in yamlBlocks) {
+      if (block.Mocks != null && block.Mocks.Count > 0) { fileMocks.AddRange(block.Mocks); }
+      if (block.MocksFiles != null && block.MocksFiles.Count > 0) { fileMockFiles.AddRange(block.MocksFiles); }
+    }
+
+    // Preload mocks from mock files into fileMocks so they are always available
+    if (fileMockFiles.Count > 0) {
+      foreach (var mf in fileMockFiles) {
+        var full = Path.IsPathRooted(mf) ? mf : Path.GetFullPath(Path.Combine(testSuite.Directory, mf));
+        if (!File.Exists(full)) { continue; }
+        try {
+          var json = File.ReadAllText(full);
+          var list = Newtonsoft.Json.JsonConvert.DeserializeObject<List<FileMockDefinition>>(json);
+          if (list != null && list.Count > 0) {
+            fileMocks.AddRange(list);
+          }
+        } catch {
+          // ignore malformed mock files in preload
+        }
+      }
+    }
+
     // Track source info (file, line) for all blocks across this file and any included .rest/.resty files
     var blockSourceMap = new Dictionary<YamlBlock, (string FilePath, int Line)>();
     foreach (var (line, block) in yamlBlocks) {
@@ -131,6 +158,8 @@ public class TestSuiteRunner
           src = (testSuite.FilePath, 1);
         }
         var httpTest = HttpTest.FromYamlBlock(yamlBlock, src.FilePath, src.Line);
+        // Attach file-level mocks for this file
+        httpTest = httpTest with { FileMocks = fileMocks.ToList(), MockFiles = fileMockFiles.ToList() };
 
         // Check if test is disabled
         if (yamlBlock.Disabled) {
@@ -202,6 +231,14 @@ public class TestSuiteRunner
 
     // Step 3: Get all YAML blocks and determine which tests to run
     var yamlBlocks = MarkdownParser.FindYamlBlocks(filePath);
+
+    // Collect file-level mocks and mocks_files from this file
+    var fileMocks = new List<FileMockDefinition>();
+    var fileMockFiles = new List<string>();
+    foreach (var (_, block) in yamlBlocks) {
+      if (block.Mocks != null && block.Mocks.Count > 0) { fileMocks.AddRange(block.Mocks); }
+      if (block.MocksFiles != null && block.MocksFiles.Count > 0) { fileMockFiles.AddRange(block.MocksFiles); }
+    }
 
     // Track source info (file, line) for this file and any included .rest/.resty files
     var blockSourceMap = new Dictionary<YamlBlock, (string FilePath, int Line)>();
@@ -293,6 +330,8 @@ public class TestSuiteRunner
           src = (filePath, 1);
         }
         var httpTest = HttpTest.FromYamlBlock(yamlBlock, src.FilePath, src.Line);
+        // Attach file-level mocks for this file
+        httpTest = httpTest with { FileMocks = fileMocks.ToList(), MockFiles = fileMockFiles.ToList() };
 
         // Check if test is disabled
         if (yamlBlock.Disabled) {

@@ -47,6 +47,16 @@ public record TestSuite
   public bool HasVariables => Variables.Count > 0 || IncludeFiles.Count > 0;
 
   /// <summary>
+  /// Mocking definitions for the current test file.
+  /// </summary>
+  public List<FileMockDefinition> Mocks { get; init; } = new();
+
+  /// <summary>
+  /// Mocking files for the test suite.
+  /// </summary>
+  public List<string> MocksFiles { get; init; } = new();
+
+  /// <summary>
   /// Filters tests by exact name match.
   /// </summary>
   /// <param name="testNames">Test names to match exactly.</param>

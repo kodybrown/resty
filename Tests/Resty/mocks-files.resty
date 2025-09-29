@@ -1,0 +1,39 @@
+# External mocks + duplicates and variable substitution
+
+```yaml
+variables:
+  dup_url: https://dup.test/api
+  base: https://var.test
+  path: v1
+  val: hello
+```
+
+```yaml
+mocks_files:
+  - mocks/dup1.json
+  - mocks/dup2.json
+  - mocks/var.json
+```
+
+```yaml
+# Last-wins for duplicates
+test: mocks_files_last_wins
+get: $dup_url
+mock_only: true
+expect:
+  status: 200
+```
+
+```yaml
+# Variable resolution at serve-time in mocks_files
+# var.json defines url: "$base/$path" and body referencing $val
+test: mocks_files_variables
+get: $base/$path
+mock_only: true
+expect:
+  status: 200
+  values:
+    - key: $.val
+      op: equals
+      value: hello
+```

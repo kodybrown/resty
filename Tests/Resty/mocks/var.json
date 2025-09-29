@@ -1,0 +1,3 @@
+[
+  { "method": "GET", "url": "$base/$path", "status": 200, "body": { "val": "$val" } }
+]

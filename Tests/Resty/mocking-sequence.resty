@@ -1,0 +1,34 @@
+# Mocking with sequence and delay
+
+```yaml
+variables:
+  base: https://api.example.com
+```
+
+```yaml
+# File-level mocks for retry simulation
+mocks:
+  - method: GET
+    url: $base/retry
+    sequence:
+      - status: 429
+        headers: { retry-after: "1" }
+        body: { error: "rate limited" }
+      - status: 200
+        body: { ok: true }
+    delay_ms: 10
+```
+
+```yaml
+# This test retries once and should see 429 then 200
+test: mock_sequence_retry
+get: $base/retry
+retry: 1
+mock_only: true
+expect:
+  status: 200
+  values:
+    - key: $.ok
+      op: equals
+      value: true
+```

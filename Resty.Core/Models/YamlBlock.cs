@@ -17,6 +17,17 @@ public record YamlBlock
   public List<string>? Include { get; init; }
 
   /// <summary>
+  /// File-level mocks defined in this block (optional). Applies to tests in this file.
+  /// </summary>
+  public List<FileMockDefinition>? Mocks { get; init; }
+
+  /// <summary>
+  /// External JSON files containing mock definitions (list of FileMockDefinition objects).
+  /// </summary>
+  [YamlMember(Alias = "mocks_files", ApplyNamingConventions = false)]
+  public List<string>? MocksFiles { get; init; }
+
+  /// <summary>
   /// Variable definitions for this block.
   /// </summary>
   public Dictionary<string, object>? Variables { get; init; }
@@ -37,6 +48,17 @@ public record YamlBlock
   /// Matches the 'expect:' YAML section.
   /// </summary>
   public ExpectDefinition? Expect { get; init; }
+
+  /// <summary>
+  /// Whether this specific test/request must use a mock (and fail if none is found).
+  /// </summary>
+  [YamlMember(Alias = "mock_only", ApplyNamingConventions = false)]
+  public bool MockOnly { get; init; } = false;
+
+  /// <summary>
+  /// Inline mock for this test (optional). If present, method/url are implied from this test.
+  /// </summary>
+  public InlineMockDefinition? Mock { get; init; }
 
   /// <summary>
   /// HTTP method (if this block defines a test).
@@ -214,9 +236,11 @@ public record YamlBlock
   /// </summary>
   public bool IsTest
     => !string.IsNullOrWhiteSpace(Test)
-    // && GetHttpMethods().Count == 1
-    && !string.IsNullOrEmpty(Method)
-    && !string.IsNullOrEmpty(Url);
+    && (
+      (!string.IsNullOrEmpty(Method) && !string.IsNullOrEmpty(Url))
+      || (Mock != null)
+      || (MockOnly)
+    );
 
   /// <summary>
   /// Determines if this block contains variables or includes.
@@ -263,6 +287,46 @@ public record YamlBlock
 
     return methods;
   }
+}
+
+/// <summary>
+/// Inline mock definition for a single test.
+/// </summary>
+public record InlineMockDefinition
+{
+  public object? Status { get; init; }
+  public Dictionary<string, string>? Headers { get; init; }
+  public object? Body { get; init; }
+  public string? ContentType { get; init; }
+  public int? DelayMs { get; init; }
+  public List<MockResponse>? Sequence { get; init; }
+}
+
+/// <summary>
+/// File-level mock definition; requires method and url.
+/// </summary>
+public record FileMockDefinition
+{
+  public string Method { get; init; } = string.Empty;
+  public string Url { get; init; } = string.Empty;
+  public object? Status { get; init; }
+  public Dictionary<string, string>? Headers { get; init; }
+  public object? Body { get; init; }
+  public string? ContentType { get; init; }
+  public int? DelayMs { get; init; }
+  public List<MockResponse>? Sequence { get; init; }
+}
+
+/// <summary>
+/// A mock response element (single response within a sequence or standalone).
+/// </summary>
+public record MockResponse
+{
+  public object? Status { get; init; }
+  public Dictionary<string, string>? Headers { get; init; }
+  public object? Body { get; init; }
+  public string? ContentType { get; init; }
+  public int? DelayMs { get; init; }
 }
 
 /// <summary>

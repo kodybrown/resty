@@ -197,6 +197,52 @@ expect:
     Content-Type: application/json
 ```
 
+## HTTP Mocking
+
+Fields in YAML:
+- Per-test:
+  - mock_only: boolean
+  - mock: Inline mock response with fields: status, headers, body, content_type, delay_ms, sequence[]
+- File-level:
+  - mocks: List of { method, url, status?, headers?, body?, content_type?, delay_ms?, sequence[]? }
+  - mocks_files: List of JSON files, each containing an array of the same object structure as in mocks
+
+Notes:
+- Inline mock applies only to the test it is defined in and takes precedence.
+- File-level mocks apply to any test in the same file (including required tests executed under this file’s context), but are not imported from included files. To share mocks across files, use mocks_files in each file.
+- Variables in url and body are resolved at request time.
+- sequence returns the first/second/... entry per successive matching request within the same test (sticky-last when exhausted). Combine with retry to simulate transient errors.
+- delay_ms can be specified at the top-level or per sequence entry (per-entry overrides).
+- Duplicates across mocks_files: last one wins; Resty prints a warning.
+
+Examples:
+
+```yaml path=null start=null
+# Inline mock only test (no get/post)
+test: mock-inline
+mock_only: true
+mock:
+  status: 200
+  body: { ok: true }
+```
+
+```yaml path=null start=null
+# File-level mocks + external files
+mocks:
+  - method: GET
+    url: $base/users
+    status: 200
+    body: { users: [{ id: 1 }] }
+mocks_files:
+  - mocks/users.json
+```
+
+```json path=null start=null
+[
+  { "method": "GET", "url": "$base/users", "status": 200, "body": { "users": [ { "id": 1 } ] } }
+]
+```
+
 ## Best Practices
 
 ### File Organization

@@ -389,6 +389,79 @@ resty -v -o json -s full.json   # Verbose JSON output to file
 resty -o html -s report.html    # Interactive HTML report
 ```
 
+## HTTP Mocking
+
+You can mock HTTP responses directly in your .resty/.rest files.
+
+- Per-test inline mock (highest precedence, no method/url needed):
+
+```yaml path=null start=null
+test: get-users
+get: $base_url/users?limit=10
+mock_only: true
+mock:
+  status: 200
+  headers:
+    content-type: application/json
+  body:
+    users: [{ id: 1 }, { id: 2 }]
+```
+
+- File-level mocks for reuse across many tests:
+
+```yaml path=null start=null
+mocks:
+  - method: GET
+    url: $base_url/users?limit=10
+    status: 200
+    headers: { content-type: application/json }
+    body:
+      users: [{ id: 1 }, { id: 2 }]
+  - method: POST
+    url: $base_url/auth
+    sequence:         # first request → 401, second → 200 (retry-friendly)
+      - status: 401
+        body: { error: invalid }
+      - status: 200
+        body: { token: "abc123" }
+```
+
+- External mock files (JSON list) merged into file-level mocks:
+
+```yaml path=null start=null
+mocks_files:
+  - mocks/users.json
+  - mocks/auth.json
+```
+
+JSON file example:
+
+```json path=null start=null
+[
+  {
+    "method": "GET",
+    "url": "$base_url/users?limit=10",
+    "status": 200,
+    "headers": { "Content-Type": "application/json" },
+    "body": { "users": [{ "id": 1 }, { "id": 2 }] }
+  }
+]
+```
+
+- Sequence and delay:
+  - sequence: returns the Nth entry on the Nth matching request (sticky-last when exhausted). Useful for retries (e.g., 429 → 200).
+  - delay_ms: adds latency (can be top-level or per sequence element; per-element overrides).
+
+- Enabling mocking and strictness:
+  - CLI: --mock turns on mocking globally (try mocks first, then network).
+  - mock_only: true on a test enforces a matching mock must exist (fail if not found). Works even without --mock.
+
+- Matching:
+  - Exact match on Method + final resolved URL (including query). Variables in url and body are resolved at serve-time.
+
+- Duplicates in mocks_files:
+  - If multiple entries with the same method+url exist across mocks_files, the last definition wins. Resty prints a warning so you can fix accidental duplicates.
+
 ## Output Examples
 
 ### Console Output

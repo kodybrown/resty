@@ -27,6 +27,8 @@ internal class Program : Resty.Helpers.ConsoleApplication
   private List<string> OptTests { get; set; } = [];
   private List<string> OptFilters { get; set; } = [];
   private OutputFormats OptOutputFormat { get; set; } = OutputFormats.Text;
+  private bool OptMock { get; set; } = false; // Enable mocking engine globally
+  private bool OptMockWasSet { get; set; } = false; // Track if set via CLI
   private string? OptSaveFile { get; set; } = null;
   private int OptParallelCount { get; set; } = 1;
   private int OptTestTimeoutSeconds { get; set; } = 30;
@@ -45,6 +47,13 @@ internal class Program : Resty.Helpers.ConsoleApplication
     if (exit_code != 0) {
       // Ensure session lock is released on early exit
       return exit_code < 0 ? exit_code : 0;
+    }
+
+    // Allow RESTY_MOCK env var to set global mocking when CLI flag not provided
+    var envMock = Environment.GetEnvironmentVariable("RESTY_MOCK");
+    if (!OptMockWasSet && !string.IsNullOrWhiteSpace(envMock)) {
+      var v = envMock.Trim().ToLowerInvariant();
+      OptMock = v == "1" || v == "true" || v == "yes" || v == "on";
     }
 
     if (OptHelp) {
@@ -180,6 +189,12 @@ internal class Program : Resty.Helpers.ConsoleApplication
             OptColor = found ? value : true; // Default to true if flag is present
             continue;
           }
+          case "mock": {
+            i = GetSubArgument<bool>(args, i, out var found, out var value);
+            OptMock = found ? value : true; // Default true when present
+            OptMockWasSet = true;
+            continue;
+          }
         }
 
         Console.WriteLine($"Unknown argument: {arg}");
@@ -241,6 +256,10 @@ internal class Program : Resty.Helpers.ConsoleApplication
     Console.WriteLine("ADVANCED:");
     Console.WriteLine("    --parallel <N>          Number of parallel threads (future feature)");
     Console.WriteLine("    --timeout <SECONDS>     HTTP request timeout in seconds (default: 30)");
+    Console.WriteLine("    --mock                  Enable mocking (try mocks first; fallback to network unless test has mock_only)");
+    Console.WriteLine();
+    Console.WriteLine("ENVIRONMENT:");
+    Console.WriteLine("    RESTY_MOCK=true         Enables --mock globally unless overridden by the CLI flag");
     Console.WriteLine();
     Console.WriteLine("EXAMPLES:");
     Console.WriteLine("    resty                           # Run all tests in current directory (recursive)");
@@ -296,7 +315,7 @@ internal class Program : Resty.Helpers.ConsoleApplication
       using var httpClient = new HttpClient();
       httpClient.Timeout = TimeSpan.FromSeconds(OptTestTimeoutSeconds);
 
-      var executor = new HttpTestExecutor(httpClient);
+      var executor = new HttpTestExecutor(httpClient, OptMock);
       var runner = new TestSuiteRunner(executor, OptTestTimeoutSeconds, OptTestTimeoutWasSet);
 
       // Step 3: Handle list option

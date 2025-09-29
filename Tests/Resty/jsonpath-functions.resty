@@ -1,0 +1,188 @@
+# JSONPath Functions - Mocked Tests
+
+```yaml
+# Common variables (optional)
+variables:
+  base: https://jsonpath.mock
+```
+
+```yaml
+# Array length
+test: jp_array_length
+get: $base/array
+mock_only: true
+mock:
+  status: 200
+  body:
+    items: [1,2,3,4]
+expect:
+  status: 200
+  values:
+    - key: $.items.length()
+      op: equals
+      value: 4
+    - key: $.items.length()
+      op: greater_than
+      value: 2
+    - key: $.items.length()
+      op: less_than
+      value: 10
+```
+
+```yaml
+# String length
+test: jp_string_length
+get: $base/string
+mock_only: true
+mock:
+  status: 200
+  body:
+    name: abc
+expect:
+  status: 200
+  values:
+    - key: $.name.length()
+      op: equals
+      value: 3
+    - key: $.name.length()
+      op: greater_than
+      value: 0
+    - key: $.name.length()
+      op: less_than
+      value: 10
+```
+
+```yaml
+# keys() and values() with aggregates
+test: jp_keys_values_aggregates
+get: $base/obj
+mock_only: true
+mock:
+  status: 200
+  body:
+    obj:
+      x: 1
+      y: 2
+      z: 3
+expect:
+  status: 200
+  values:
+    - key: $.obj.keys().length()
+      op: equals
+      value: 3
+    - key: $.obj.values().sum()
+      op: equals
+      value: 6
+    - key: $.obj.values().avg()
+      op: equals
+      value: 2
+    - key: $.obj.values().min()
+      op: equals
+      value: 1
+    - key: $.obj.values().max()
+      op: equals
+      value: 3
+```
+
+```yaml
+# distinct() on arrays
+test: jp_distinct_length
+get: $base/distinct
+mock_only: true
+mock:
+  status: 200
+  body:
+    nums: [1,2,2,3]
+expect:
+  status: 200
+  values:
+    - key: $.nums.distinct().length()
+      op: equals
+      value: 3
+```
+
+```yaml
+# to_number() and sum()
+test: jp_to_number_sum
+get: $base/to_number
+mock_only: true
+mock:
+  status: 200
+  body:
+    nums: ["1","2","3"]
+expect:
+  status: 200
+  values:
+    - key: $.nums.to_number().sum()
+      op: equals
+      value: 6
+```
+
+```yaml
+# type() and empty()
+test: jp_type_empty
+get: $base/type_empty
+mock_only: true
+mock:
+  status: 200
+  body:
+    arr: []
+    obj: {}
+    str: ""
+    nul: null
+    num: 1
+    flag: true
+expect:
+  status: 200
+  values:
+    - key: $.arr.type()
+      op: equals
+      value: array
+    - key: $.obj.type()
+      op: equals
+      value: object
+    - key: $.str.type()
+      op: equals
+      value: string
+    - key: $.num.type()
+      op: equals
+      value: number
+    - key: $.flag.type()
+      op: equals
+      value: boolean
+    - key: $.nul.type()
+      op: equals
+      value: null
+    - key: $.arr.empty()
+      op: equals
+      value: true
+    - key: $.obj.empty()
+      op: equals
+      value: true
+    - key: $.str.empty()
+      op: equals
+      value: true
+```
+
+```yaml
+# String transforms: trim, lower, upper
+test: jp_string_transforms
+get: $base/strings
+mock_only: true
+mock:
+  status: 200
+  body:
+    s: " A b C "
+expect:
+  status: 200
+  values:
+    - key: $.s.trim()
+      op: equals
+      value: "A b C"
+    - key: $.s.lower()
+      op: equals
+      value: " a b c "
+    - key: $.s.upper()
+      op: equals
+      value: " A B C "
+```

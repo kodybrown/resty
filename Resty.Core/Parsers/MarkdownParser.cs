@@ -119,6 +119,8 @@ public static class MarkdownParser
     var tests = new List<HttpTest>();
     var variables = new Dictionary<string, object>();
     var includeFiles = new List<string>();
+    var fileMocks = new List<FileMockDefinition>();
+    var fileMocksFiles = new List<string>();
 
     foreach (var (lineNumber, block) in yamlBlocks.OrderBy(kvp => kvp.Key)) {
       // Collect variables from this block
@@ -133,6 +135,14 @@ public static class MarkdownParser
         includeFiles.AddRange(block.Include);
       }
 
+      // Collect file-level mocks and mocks_files (from non-test blocks or test blocks alike)
+      if (block.Mocks != null && block.Mocks.Count > 0) {
+        fileMocks.AddRange(block.Mocks);
+      }
+      if (block.MocksFiles != null && block.MocksFiles.Count > 0) {
+        fileMocksFiles.AddRange(block.MocksFiles);
+      }
+
       // Create HttpTest if this is a valid test block
       if (block.IsTest) {
         try {
@@ -145,11 +155,22 @@ public static class MarkdownParser
       }
     }
 
+    // Attach file-level mocks info to tests
+    if (tests.Count > 0 && (fileMocks.Count > 0 || fileMocksFiles.Count > 0)) {
+      for (int i = 0; i < tests.Count; i++) {
+        var t = tests[i];
+        t = t with { FileMocks = fileMocks.ToList(), MockFiles = fileMocksFiles.ToList() };
+        tests[i] = t;
+      }
+    }
+
     return new TestSuite {
       FilePath = filePath,
       Variables = variables,
       IncludeFiles = includeFiles,
-      Tests = tests
+      Tests = tests,
+      Mocks = fileMocks,
+      MocksFiles = fileMocksFiles
     };
   }
 }

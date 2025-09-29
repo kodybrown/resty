@@ -16,10 +16,13 @@ using Resty.Core.Variables;
 public class HttpTestExecutor
 {
   private readonly HttpClient _httpClient;
+  private readonly bool _enableMocking;
+  private readonly Dictionary<string, int> _sequencePositions = new();
 
-  public HttpTestExecutor( HttpClient httpClient )
+  public HttpTestExecutor( HttpClient httpClient, bool enableMocking = false )
   {
     _httpClient = httpClient ?? throw new ArgumentNullException(nameof(httpClient));
+    _enableMocking = enableMocking;
   }
 
   /// <summary>
@@ -75,16 +78,25 @@ public class HttpTestExecutor
         // Step 2: Apply variable resolution
         var resolvedTest = ResolveVariables(test, variableStore);
 
-        // Step 3: Create HTTP request
-        var request = CreateHttpRequest(resolvedTest);
-
-        // Step 4: Execute HTTP request with timeout
-        using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        if (timeoutSeconds.HasValue) {
-          timeoutCts.CancelAfter(TimeSpan.FromSeconds(timeoutSeconds.Value));
+        // Step 3: Decide whether to mock this request and possibly produce a response
+        HttpResponseMessage? response = null;
+        var shouldAttemptMock = ShouldAttemptMock(test);
+        if (shouldAttemptMock) {
+          response = await TryServeMockAsync(test, resolvedTest, variableStore, cancellationToken);
         }
 
-        var response = await _httpClient.SendAsync(request, timeoutCts.Token);
+        if (response == null) {
+          // Step 3.1: Create HTTP request (only if not mocked)
+          var request = CreateHttpRequest(resolvedTest);
+
+          // Step 4: Execute HTTP request with timeout
+          using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+          if (timeoutSeconds.HasValue) {
+            timeoutCts.CancelAfter(TimeSpan.FromSeconds(timeoutSeconds.Value));
+          }
+
+          response = await _httpClient.SendAsync(request, timeoutCts.Token);
+        }
 
         // Step 5: Process response
         var responseBody = await response.Content.ReadAsStringAsync(cancellationToken);
@@ -255,6 +267,207 @@ public class HttpTestExecutor
       "Unknown error during retry execution", lastException);
   }
 
+  private bool ShouldAttemptMock( HttpTest test )
+  {
+    // Attempt mock if inline mock is present, or test is mock_only, or global mocking is enabled
+    if (test.InlineMock != null) { return true; }
+    if (test.MockOnly) { return true; }
+    if (_enableMocking) { return true; }
+    // Opportunistically attempt mocks when file-level mocks are available for this test
+    if ((test.FileMocks?.Count ?? 0) > 0 || (test.MockFiles?.Count ?? 0) > 0) { return true; }
+    return false;
+  }
+
+  private async Task<HttpResponseMessage?> TryServeMockAsync(
+      HttpTest test,
+      ResolvedHttpTest resolvedTest,
+      VariableStore vars,
+      CancellationToken cancellationToken )
+  {
+    // Inline mock takes precedence
+    if (test.InlineMock != null) {
+      return await BuildResponseFromInlineMockAsync(test, vars, cancellationToken);
+    }
+
+    // If we don't have method+url and no inline mock, cannot match file-level mocks
+    if (string.IsNullOrEmpty(resolvedTest.Method) || string.IsNullOrEmpty(resolvedTest.Url)) {
+      if (test.MockOnly) {
+        throw new InvalidOperationException("mock_only test without method/url must provide an inline mock.");
+      }
+      return null; // fall back to network (if allowed)
+    }
+
+    // Attempt file-level mocks from test.FileMocks and test.MockFiles (last-wins)
+    var method = resolvedTest.Method.ToUpperInvariant();
+    var url = resolvedTest.Url;
+
+    // Build merged list: mocks_files then inline list; last wins → we will search from end to start
+    var merged = new List<FileMockDefinition>();
+
+    // Load mocks from files
+    if (test.MockFiles?.Count > 0) {
+      // Track duplicates across mock files (method+url); warn when seen again
+      var seenAcrossFiles = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+      foreach (var f in test.MockFiles) {
+        var baseDir = Path.GetDirectoryName(test.SourceFile) ?? string.Empty;
+        var full = Path.IsPathRooted(f) ? f : Path.GetFullPath(Path.Combine(baseDir, f));
+        var list = LoadMockFileList(full, test.SourceFile);
+        if (list != null && list.Count > 0) {
+          foreach (var entry in list) {
+            var rawKey = $"{(entry.Method ?? string.Empty).ToUpperInvariant()}|{entry.Url ?? string.Empty}";
+            if (!seenAcrossFiles.Add(rawKey)) {
+              Console.WriteLine($"Warning: duplicate mock for {rawKey} in mocks_files. Last definition wins. (File: {full})");
+            }
+            merged.Add(entry);
+          }
+        }
+      }
+    }
+
+    if (test.FileMocks?.Count > 0) {
+      merged.AddRange(test.FileMocks);
+    }
+
+    for (int i = merged.Count - 1; i >= 0; i--) {
+      var entry = merged[i];
+      if (!string.Equals(entry.Method, method, StringComparison.OrdinalIgnoreCase)) { continue; }
+      var entryUrl = vars.ResolveVariables(entry.Url ?? string.Empty) ?? string.Empty;
+      if (!string.Equals(entryUrl, url, StringComparison.Ordinal)) { continue; }
+
+      return await BuildResponseFromFileMockAsync(method, url, entry, vars, cancellationToken);
+    }
+
+    if (test.MockOnly) {
+      throw new InvalidOperationException($"No mock found for {method} {url} (mock_only)");
+    }
+
+    return null; // No mock served → fall through to network
+  }
+
+  private async Task<HttpResponseMessage> BuildResponseFromInlineMockAsync( HttpTest test, VariableStore vars, CancellationToken ct )
+  {
+    var mk = test.InlineMock!;
+
+    if (mk.Sequence != null && mk.Sequence.Count > 0) {
+      var key = $"{test.SourceFile}::{test.Name}::inline";
+      var idx = NextSequenceIndex(key, mk.Sequence.Count);
+      var elem = mk.Sequence[Math.Min(idx, mk.Sequence.Count - 1)];
+      var status = CoerceStatus(elem.Status ?? mk.Status, vars, 200);
+      return await BuildResponseAsync(status, elem.Headers ?? mk.Headers, elem.Body ?? mk.Body, elem.ContentType ?? mk.ContentType, elem.DelayMs ?? mk.DelayMs, vars, ct);
+    }
+
+    var baseStatus = CoerceStatus(mk.Status, vars, 200);
+    return await BuildResponseAsync(baseStatus, mk.Headers, mk.Body, mk.ContentType, mk.DelayMs, vars, ct);
+  }
+
+  private async Task<HttpResponseMessage> BuildResponseFromFileMockAsync( string method, string url, FileMockDefinition entry, VariableStore vars, CancellationToken ct )
+  {
+    if (entry.Sequence != null && entry.Sequence.Count > 0) {
+      var key = $"{method}|{url}";
+      var idx = NextSequenceIndex(key, entry.Sequence.Count);
+      var elem = entry.Sequence[Math.Min(idx, entry.Sequence.Count - 1)];
+      var status = CoerceStatus(elem.Status ?? entry.Status, vars, 200);
+      return await BuildResponseAsync(status, elem.Headers ?? entry.Headers, elem.Body ?? entry.Body, elem.ContentType ?? entry.ContentType, elem.DelayMs ?? entry.DelayMs, vars, ct);
+    }
+
+    var baseStatus = CoerceStatus(entry.Status, vars, 200);
+    return await BuildResponseAsync(baseStatus, entry.Headers, entry.Body, entry.ContentType, entry.DelayMs, vars, ct);
+  }
+
+  private int NextSequenceIndex( string key, int count )
+  {
+    if (!_sequencePositions.TryGetValue(key, out var pos)) {
+      pos = 0;
+    } else {
+      pos++;
+    }
+    _sequencePositions[key] = pos;
+    // sticky-last behavior is implemented by capping index when selecting
+    return pos;
+  }
+
+  private async Task<HttpResponseMessage> BuildResponseAsync(
+      int status,
+      Dictionary<string, string>? headers,
+      object? body,
+      string? contentType,
+      int? delayMs,
+      VariableStore vars,
+      CancellationToken ct )
+  {
+    if (delayMs.HasValue && delayMs.Value > 0) {
+      await Task.Delay(delayMs.Value, ct);
+    }
+
+    var response = new HttpResponseMessage((HttpStatusCode)status);
+
+    // Prepare content without setting media type to avoid duplicate Content-Type values
+    HttpContent? content = null;
+    string? effectiveContentType = null;
+    if (body is null) {
+      content = new StringContent(string.Empty, Encoding.UTF8);
+      effectiveContentType = contentType; // may be overridden by headers
+    } else if (body is string s) {
+      var resolved = vars.ResolveVariables(s) ?? string.Empty;
+      content = new StringContent(resolved, Encoding.UTF8);
+      effectiveContentType = contentType ?? "text/plain";
+    } else {
+      var resolvedStruct = ResolveStructuredVariablesDeep(body, vars);
+      var json = JsonConvert.SerializeObject(resolvedStruct);
+      content = new StringContent(json, Encoding.UTF8);
+      effectiveContentType = contentType ?? "application/json";
+    }
+
+    response.Content = content;
+
+    // Prefer Content-Type provided in headers over computed effectiveContentType
+    string? headerContentType = null;
+    if (headers != null) {
+      foreach (var (hk, hv) in headers) {
+        if (string.Equals(hk, "Content-Type", StringComparison.OrdinalIgnoreCase)) {
+          headerContentType = hv;
+          break;
+        }
+      }
+    }
+    var finalContentType = headerContentType ?? effectiveContentType ?? "application/json";
+    if (response.Content != null && !string.IsNullOrWhiteSpace(finalContentType)) {
+      if (System.Net.Http.Headers.MediaTypeHeaderValue.TryParse(finalContentType, out var parsedCt)) {
+        response.Content.Headers.ContentType = parsedCt;
+      } else {
+        response.Content.Headers.Remove("Content-Type");
+        response.Content.Headers.TryAddWithoutValidation("Content-Type", finalContentType);
+      }
+    }
+
+    // Headers
+    if (headers != null) {
+      foreach (var (k, v) in headers) {
+        if (string.Equals(k, "Content-Type", StringComparison.OrdinalIgnoreCase)) {
+          // Already applied above as finalContentType
+          continue;
+        }
+        response.Headers.TryAddWithoutValidation(k, v);
+      }
+    }
+
+    return response;
+  }
+
+  private static List<FileMockDefinition>? LoadMockFileList( string path, string sourceFile )
+  {
+    try {
+      var baseDir = Path.GetDirectoryName(sourceFile) ?? string.Empty;
+      var full = Path.IsPathRooted(path) ? path : Path.GetFullPath(Path.Combine(baseDir, path));
+      if (!File.Exists(full)) { return null; }
+      var json = File.ReadAllText(full);
+      var list = JsonConvert.DeserializeObject<List<FileMockDefinition>>(json);
+      return list;
+    } catch {
+      return null;
+    }
+  }
+
   private static bool IsPass( HttpResponseMessage response, HttpTest test )
   {
     return test.ExpectedStatus.HasValue
@@ -420,6 +633,31 @@ public class HttpTestExecutor
     return string.Join("&", parts);
   }
 
+  private static int CoerceStatus( object? status, VariableStore vars, int fallback )
+  {
+    return TryCoerceToInt(status, vars, out var value) ? value : fallback;
+  }
+
+  private static bool TryCoerceToInt( object? value, VariableStore vars, out int result )
+  {
+    result = default;
+    if (value is null) { return false; }
+    switch (value) {
+      case int i:
+        result = i; return true;
+      case long l:
+        result = (int)l; return true;
+      case double d:
+        result = (int)d; return true;
+      case string s:
+        var resolved = vars.ResolveVariables(s) ?? string.Empty;
+        return int.TryParse(resolved, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out result);
+      default:
+        var text = value.ToString() ?? string.Empty;
+        return int.TryParse(text, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out result);
+    }
+  }
+
   private static object ResolveStructuredVariablesDeep( object value, VariableStore vars )
   {
     switch (value) {
@@ -434,6 +672,16 @@ public class HttpTestExecutor
           result[key] = ResolveStructuredVariablesDeep(kvp.Value!, vars);
         }
         return result;
+      case Newtonsoft.Json.Linq.JValue jv:
+        return jv.Value == null ? null! : ResolveStructuredVariablesDeep(jv.Value, vars);
+      case Newtonsoft.Json.Linq.JObject jo:
+        var dict = new Dictionary<string, object?>();
+        foreach (var p in jo.Properties()) {
+          dict[p.Name] = p.Value == null ? null : ResolveStructuredVariablesDeep(p.Value, vars);
+        }
+        return dict;
+      case Newtonsoft.Json.Linq.JArray ja:
+        return ja.Select(token => token == null ? null : ResolveStructuredVariablesDeep(token, vars)).ToList();
       case IEnumerable<object?> list:
         return list.Select(item => item is null ? null : ResolveStructuredVariablesDeep(item, vars)).ToList();
       default:
@@ -561,6 +809,13 @@ public class HttpTestExecutor
 
       // Resolve expected value (with variables and keywords)
       var (expValue, expIsNull, expIsEmpty) = ResolveExpectedValue(rule.Value, variableStore);
+
+      // Compatibility: treat YAML null expected for *.type() as string "null"
+      if (!string.IsNullOrWhiteSpace(key) && key.TrimEnd().EndsWith(".type()", StringComparison.OrdinalIgnoreCase) && expIsNull) {
+        expValue = "null";
+        expIsNull = false;
+        expIsEmpty = false;
+      }
 
       var matchesAny = false;
       var tokensToCheck = SelectTokensSafe(json, key).ToList();
@@ -730,17 +985,25 @@ public class HttpTestExecutor
 
   private static string GetTypeName( JToken t )
   {
-    return t.Type switch {
-      JTokenType.Array => "array",
-      JTokenType.Object => "object",
-      JTokenType.String => "string",
-      JTokenType.Integer => "number",
-      JTokenType.Float => "number",
-      JTokenType.Boolean => "boolean",
-      JTokenType.Null => "null",
-      JTokenType.Date => "date",
-      _ => t.Type.ToString().ToLowerInvariant()
-    };
+    // Robust type detection that treats numeric/boolean strings as their logical types
+    switch (t.Type) {
+      case JTokenType.Array: return "array";
+      case JTokenType.Object: return "object";
+      case JTokenType.Integer:
+      case JTokenType.Float: return "number";
+      case JTokenType.Boolean: return "boolean";
+      case JTokenType.Null: return "null";
+      case JTokenType.Date: return "date";
+      case JTokenType.String: {
+        var s = t.Value<string>() ?? string.Empty;
+        if (bool.TryParse(s, out _)) { return "boolean"; }
+        if (double.TryParse(s, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out _)) { return "number"; }
+        if (string.Equals(s, "null", StringComparison.OrdinalIgnoreCase)) { return "null"; }
+        return "string";
+      }
+      default:
+        return t.Type.ToString().ToLowerInvariant();
+    }
   }
 
   private static double AggregateNumbers( JToken t, Aggregation agg )
@@ -883,7 +1146,7 @@ public class HttpTestExecutor
 
   private static (object? Value, bool IsNull, bool IsEmpty) ResolveExpectedValue( object? raw, VariableStore vars )
   {
-    if (raw == null) { return (null, false, false); }
+    if (raw == null) { return (null, true, false); }
 
     if (raw is string s) {
       // Handle keyword literals before variable resolution

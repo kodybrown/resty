@@ -87,6 +87,37 @@ public record HttpTest
   /// </summary>
   public int? Timeout { get; init; }
 
+  // Mocking
+  //
+
+  /// <summary>
+  /// If true, this test will not perform a real HTTP request and will only use mocks, regardless
+  /// of whether a method and URL are specified, and regardless if `--mock` was specified on the CLI. If false (default), the test performs a real HTTP request unless `--mock` was specified on the CLI.
+  /// </summary>
+  public bool MockOnly { get; init; } = false;
+
+  /// <summary>
+  /// Inline mock definition for this test (if any).
+  /// </summary>
+  public InlineMockDefinition? InlineMock { get; init; }
+
+  /// <summary>
+  /// List of file-based mock definitions associated with this test (if any).
+  /// These mock responses are matched based on the test's method and URL,
+  /// and are only used if MockOnly is true or if --mock was specified on the CLI.
+  /// They are also not available outside of this file.
+  /// </summary>
+  public List<FileMockDefinition> FileMocks { get; init; } = new();
+
+  /// <summary>
+  /// List of external mock files to load for this test (if any).
+  /// These files can contain multiple mock definitions that can be matched
+  /// based on the test's method and URL. They are only used if MockOnly is true
+  /// or if --mock was specified on the CLI.
+  /// Mock files (.json) _are_ available outside of the file they were defined in.
+  /// </summary>
+  public List<string> MockFiles { get; init; } = new();
+
   /// <summary>
   /// Creates an HttpTest from a validated YamlBlock.
   /// </summary>
@@ -103,10 +134,10 @@ public record HttpTest
 
     var methodAndUrl = block.GetHttpMethodAndUrl()!;
 
-    return new HttpTest {
+    var httpTest = new HttpTest {
       Name = block.Test!,
-      Method = methodAndUrl.Value.Method,
-      Url = methodAndUrl.Value.Url,
+      Method = methodAndUrl?.Method ?? string.Empty,
+      Url = methodAndUrl?.Url ?? string.Empty,
       Description = block.Description,
       ContentType = block.ContentType ?? "application/json",
       Authorization = block.Authorization,
@@ -118,7 +149,16 @@ public record HttpTest
       Expect = block.Expect,
       SourceFile = sourceFile,
       SourceLine = sourceLine,
-      Timeout = block.Timeout
+      Timeout = block.Timeout,
+      MockOnly = block.MockOnly,
+      InlineMock = block.Mock
     };
+
+    // Validate mock_only without method/url and without inline mock
+    if (httpTest.MockOnly && httpTest.InlineMock is null && (string.IsNullOrEmpty(httpTest.Method) || string.IsNullOrEmpty(httpTest.Url))) {
+      throw new InvalidOperationException("mock_only requires either an inline mock or an HTTP method+url to match file-level mocks.");
+    }
+
+    return httpTest;
   }
 }
