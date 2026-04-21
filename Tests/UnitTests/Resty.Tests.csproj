@@ -55,7 +55,7 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\Resty.Core\Resty.Core.csproj" />
+    <ProjectReference Include="..\..\Resty.Core\Resty.Core.csproj" />
   </ItemGroup>
 
   <ItemGroup>
@@ -78,7 +78,7 @@
   <!-- Generate deterministic BuildDateUtc from Git commit timestamp and emit as a source file -->
   <Target Name="WriteBuildInfo" BeforeTargets="CoreCompile">
     <!-- Ask git for strict ISO8601 commit time; ignore errors to keep builds working without git -->
-    <Exec Command="git show -s --format=%%cI HEAD" ConsoleToMSBuild="true" IgnoreExitCode="true">
+    <Exec Command="git show -s --format=%cI HEAD" ConsoleToMSBuild="true" IgnoreExitCode="true">
       <Output TaskParameter="ConsoleOutput" PropertyName="BuildDateIsoRaw" />
     </Exec>
 

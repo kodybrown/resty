@@ -1,13 +1,13 @@
 ﻿
 Microsoft Visual Studio Solution File, Format Version 12.00
-# Visual Studio Version 17
-VisualStudioVersion = 17.0.31903.59
+# Visual Studio Version 18
+VisualStudioVersion = 18.0.11205.157 d18.0
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Resty.Cli", "Resty.Cli\Resty.Cli.csproj", "{886F29C7-A67C-4DCA-A30C-E51946F3FEEB}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Resty.Core", "Resty.Core\Resty.Core.csproj", "{F4279D84-CE45-4F08-BF5C-579314A301BB}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Resty.Tests", "Resty.Tests\Resty.Tests.csproj", "{FA067D3E-1F4A-44BF-AA3D-9E814249FBC9}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Resty.Tests", "Tests\UnitTests\Resty.Tests.csproj", "{FA067D3E-1F4A-44BF-AA3D-9E814249FBC9}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -58,5 +58,8 @@ Global
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {1182DB01-BBBD-4887-B2EE-B123B568E58C}
 	EndGlobalSection
 EndGlobal

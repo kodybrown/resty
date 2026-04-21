@@ -24,7 +24,34 @@ Use the [Resty.VSCode](https://github.com/kodybrown/resty-vscode) extension for 
 
 ### Installation
 
-#### Option 1: Quick Build (Recommended)
+#### Option 1: Linux install with Make (Recommended on Linux)
+
+The repo now ships with a standard Makefile so Linux installs behave like a normal source install:
+
+```bash
+# Build and install into ~/.local/bin without sudo
+make install-user
+
+# Or install system-wide
+sudo make install
+```
+
+Useful variants:
+
+```bash
+# Stage files for packaging
+make install DESTDIR="$PWD/package-root" PREFIX=/usr
+
+# Override the detected runtime when needed
+make publish RID=linux-arm64
+
+# Remove a system install
+sudo make uninstall
+```
+
+The default install path is `/usr/local/bin/resty`, and `make install-user` installs to `$HOME/.local/bin/resty`.
+
+#### Option 2: Quick Build Scripts
 
 Use the provided build scripts for easy compilation:
 
@@ -39,7 +66,7 @@ Use the provided build scripts for easy compilation:
 publish.bat                      # Simple Windows build
 ```
 
-#### Option 2: Manual Build
+#### Option 3: Manual Build
 
 ```powershell
 # Clone and build from source
@@ -51,10 +78,10 @@ dotnet build
 dotnet run --project Resty.Cli -- --help
 
 # Or build single-file executable
-dotnet publish Resty.Cli/Resty.Cli.csproj -c Release -r win-x64 --self-contained true /p:PublishSingleFile=true /p:PublishTrimmed=true -o ./publish
+dotnet publish Resty.Cli/Resty.Cli.csproj -c Release -r win-x64 --self-contained true /p:PublishSingleFile=true /p:PublishTrimmed=false -o ./publish
 ```
 
-> 💡 **Tip**: The build scripts automatically detect your platform and create optimized, self-contained executables. See [BUILD.md](BUILD.md) for advanced build options.
+> 💡 **Tip**: The build scripts automatically detect your platform and create self-contained executables. Trimming is disabled by default because the current serializers are not trim-safe. See [BUILD.md](BUILD.md) for advanced build options.
 
 ### Basic Usage
 

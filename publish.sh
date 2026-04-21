@@ -183,7 +183,7 @@ BUILD_ARGS=(
     "-r" "$RUNTIME"
     "--self-contained" "true"
     "/p:PublishSingleFile=true"
-    "/p:PublishTrimmed=true"
+    "/p:PublishTrimmed=false"
     "-o" "$OUTPUT_PATH"
 )
 

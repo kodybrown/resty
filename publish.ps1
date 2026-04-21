@@ -116,7 +116,7 @@ try {
     '-r', $Runtime
     '--self-contained', 'true'
     '/p:PublishSingleFile=true'
-    '/p:PublishTrimmed=true'
+    '/p:PublishTrimmed=false'
     '-o', $OutputPath
   )
 

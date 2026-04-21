@@ -2,6 +2,38 @@
 
 Resty provides multiple build scripts for different platforms and preferences.
 
+## Linux Makefile
+
+For Linux, the simplest install path is the repo-level Makefile:
+
+```bash
+# Publish and install to ~/.local/bin/resty
+make install-user
+
+# Publish and install to /usr/local/bin/resty
+sudo make install
+```
+
+Key variables:
+
+- `RID`: target runtime identifier. Defaults to the detected Linux architecture.
+- `PREFIX`: installation root. Defaults to `/usr/local`.
+- `DESTDIR`: staging prefix for distro packaging.
+- `CONFIGURATION`: build configuration. Defaults to `Release`.
+
+Examples:
+
+```bash
+# Package into a staging directory
+make install DESTDIR="$PWD/package-root" PREFIX=/usr
+
+# Build for ARM64
+make publish RID=linux-arm64
+
+# Remove an installed binary
+sudo make uninstall
+```
+
 ## Build Scripts
 
 ### Windows Batch Script (`publish.bat`)
@@ -68,7 +100,7 @@ All scripts create a single-file, self-contained executable that includes:
 
 - ✅ .NET runtime (no installation required on target machine)
 - ✅ All dependencies bundled
-- ✅ Trimmed unused code for smaller size
+- ✅ Trimming disabled by default for compatibility with current serializers
 - ✅ Optimized for Release builds
 
 ## Installation
@@ -92,7 +124,7 @@ dotnet publish Resty.Cli/Resty.Cli.csproj \
   -r win-x64 \
   --self-contained true \
   /p:PublishSingleFile=true \
-  /p:PublishTrimmed=true \
+  /p:PublishTrimmed=false \
   -o ./publish
 ```
 
