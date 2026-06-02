@@ -16,6 +16,9 @@ public class VariableStore
   private static readonly Regex VariablePattern = new(@"\$([a-zA-Z_][a-zA-Z0-9_]*)", RegexOptions.Compiled);
   private static readonly Regex EnvVariablePattern = new(@"\$env:([a-zA-Z_][a-zA-Z0-9_]*)", RegexOptions.Compiled);
 
+  // Builtin random number generator (shared across all tests)
+  private static readonly Random _randomGenerator = new();
+
   /// <summary>
   /// Gets all variable names currently available.
   /// </summary>
@@ -105,7 +108,7 @@ public class VariableStore
   }
 
   /// <summary>
-  /// Resolves all variables in the given text using $variable and $env:VARIABLE syntax.
+  /// Resolves all variables in the given text using $variable, $env:VARIABLE, and $RandomNumber syntax.
   /// </summary>
   /// <param name="text">Text containing variable references.</param>
   /// <returns>Text with all variables resolved.</returns>
@@ -117,6 +120,9 @@ public class VariableStore
     }
 
     var result = text;
+
+    // Handle builtin $RandomNumber first
+    result = Regex.Replace(result, @"\$RandomNumber", match => _randomGenerator.Next(10000, 99999).ToString());
 
     // First, resolve environment variables ($env:VAR_NAME)
     result = EnvVariablePattern.Replace(result, match =>
