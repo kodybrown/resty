@@ -1,6 +1,7 @@
 # Development notes
 **/*.ground_zero
 **/.plan/
+/CopyToBin.bat
 
 # Private/sensitive files
 #**/*.private.yaml
@@ -12,6 +13,8 @@
 # Build outputs
 [Bb]in/
 [Oo]bj/
+artifacts/
+builds/
 publish/
 
 # Visual Studio
@@ -57,4 +60,3 @@ packages/
 *.snupkg
 project.lock.json
 project.fragment.lock.json
-artifacts/

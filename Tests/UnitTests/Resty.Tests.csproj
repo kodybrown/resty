@@ -78,7 +78,12 @@
   <!-- Generate deterministic BuildDateUtc from Git commit timestamp and emit as a source file -->
   <Target Name="WriteBuildInfo" BeforeTargets="CoreCompile">
     <!-- Ask git for strict ISO8601 commit time; ignore errors to keep builds working without git -->
-    <Exec Command="git show -s --format=%cI HEAD" ConsoleToMSBuild="true" IgnoreExitCode="true">
+    <PropertyGroup>
+      <!-- On Windows cmd.exe requires %% to escape %, POSIX shells do not -->
+      <GitIsoFormat Condition="'$(OS)' == 'Windows_NT'">%%cI</GitIsoFormat>
+      <GitIsoFormat Condition="'$(OS)' != 'Windows_NT'">%cI</GitIsoFormat>
+    </PropertyGroup>
+    <Exec Command="git show -s --format=$(GitIsoFormat) HEAD" ConsoleToMSBuild="true" IgnoreExitCode="true">
       <Output TaskParameter="ConsoleOutput" PropertyName="BuildDateIsoRaw" />
     </Exec>
 
