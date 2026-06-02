@@ -66,16 +66,20 @@
   <!-- Generate deterministic BuildDateUtc from Git commit timestamp and emit as a source file -->
   <Target Name="WriteBuildInfo" BeforeTargets="CoreCompile">
     <!-- Ask git for strict ISO8601 commit time; ignore errors to keep builds working without git -->
-    <Exec Command="git show -s --format=%cI HEAD" ConsoleToMSBuild="true" IgnoreExitCode="true">
+    <PropertyGroup>
+      <!-- On Windows cmd.exe requires %% to escape %, POSIX shells do not -->
+      <GitIsoFormat Condition="'$(OS)' == 'Windows_NT'">%%cI</GitIsoFormat>
+      <GitIsoFormat Condition="'$(OS)' != 'Windows_NT'">%cI</GitIsoFormat>
+    </PropertyGroup>
+    <Exec Command="git show -s --format=$(GitIsoFormat) HEAD" ConsoleToMSBuild="true" IgnoreExitCode="true">
       <Output TaskParameter="ConsoleOutput" PropertyName="BuildDateIsoRaw" />
     </Exec>
 
     <!-- Trim output; normalize to Z (UTC) -->
     <PropertyGroup>
       <_BuildDateIso>$([System.String]::Copy('$(BuildDateIsoRaw)').Trim())</_BuildDateIso>
-      <_BuildDateIsoHasPercent>$([System.String]::Copy('$(_BuildDateIso)').Contains('%'))</_BuildDateIsoHasPercent>
     </PropertyGroup>
-    <PropertyGroup Condition="'$(_BuildDateIso)' != '' and '$(_BuildDateIsoHasPercent)' != 'True'">
+    <PropertyGroup Condition="'$(_BuildDateIso)' != ''">
       <BuildDateUtc>$([System.DateTimeOffset]::Parse('$(_BuildDateIso)').ToUniversalTime().ToString("yyyy'-'MM'-'dd'T'HH':'mm':'ss'Z'"))</BuildDateUtc>
     </PropertyGroup>
     <PropertyGroup Condition="'$(BuildDateUtc)' == ''">
