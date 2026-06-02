@@ -169,11 +169,18 @@ public class ConsoleApplication
         result = (T)(object)subItem;
         return index;
       } else if (typeof(T) == typeof(bool)) {
-        result = subItem switch {
-          "true" or "t" or "yes" or "1" => (T)(object)true,
-          _ => (T)(object)false,
-        };
-        return index;
+        switch (subItem.ToLowerInvariant()) {
+          case "true" or "t" or "yes" or "y" or "1" or "on":
+            result = (T)(object)true;
+            return index;
+          case "false" or "f" or "no" or "n" or "0" or "off":
+            result = (T)(object)false;
+            return index;
+          default:
+            result = default(T);
+            found = false;
+            return index - 1;
+        }
       } else if (typeof(T) == typeof(DateTime)) {
         if (subItem.ToLower() == "now" || subItem.ToLower() == "utcnow") {
           result = (T)(object)DateTime.UtcNow;

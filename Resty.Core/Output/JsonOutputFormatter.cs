@@ -13,22 +13,26 @@ public class JsonOutputFormatter : IOutputFormatter
     PropertyNamingPolicy = JsonNamingPolicy.CamelCase
   };
 
-  public void WriteToConsole( TestRunSummary summary, bool verbose = false, bool useColors = true )
+  public void WriteToConsole( TestRunSummary summary, bool verbose = false, bool useColors = true, bool failuresOnly = false )
   {
-    var jsonOutput = ConvertToJsonModel(summary, verbose);
+    var jsonOutput = ConvertToJsonModel(summary, verbose, failuresOnly);
     var json = JsonSerializer.Serialize(jsonOutput, JsonOptions);
     Console.WriteLine(json);
   }
 
-  public async Task SaveToFileAsync( TestRunSummary summary, string filePath, bool verbose = false )
+  public async Task SaveToFileAsync( TestRunSummary summary, string filePath, bool verbose = false, bool failuresOnly = false )
   {
-    var jsonOutput = ConvertToJsonModel(summary, verbose: true); // Always include full details when saving
+    var jsonOutput = ConvertToJsonModel(summary, verbose: true, failuresOnly); // Always include full details when saving
     var json = JsonSerializer.Serialize(jsonOutput, JsonOptions);
     await File.WriteAllTextAsync(filePath, json);
   }
 
-  private JsonTestOutput ConvertToJsonModel( TestRunSummary summary, bool verbose )
+  private JsonTestOutput ConvertToJsonModel( TestRunSummary summary, bool verbose, bool failuresOnly )
   {
+    var results = failuresOnly
+      ? summary.Results.Where(r => r.Status == TestStatus.Failed)
+      : summary.Results;
+
     return new JsonTestOutput {
       Summary = new JsonSummary {
         TotalTests = summary.TotalTests,
@@ -40,7 +44,7 @@ public class JsonOutputFormatter : IOutputFormatter
         StartTime = summary.StartTime,
         EndTime = summary.EndTime
       },
-      Results = summary.Results.Select(r => ConvertTestResult(r, verbose)).ToList(),
+      Results = results.Select(r => ConvertTestResult(r, verbose)).ToList(),
       Metadata = new JsonMetadata()
     };
   }

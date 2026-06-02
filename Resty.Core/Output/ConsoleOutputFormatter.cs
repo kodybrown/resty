@@ -9,12 +9,12 @@ using Resty.Core.Models;
 /// </summary>
 public class ConsoleOutputFormatter : IOutputFormatter
 {
-  public void WriteToConsole( TestRunSummary summary, bool verbose = false, bool useColors = true )
+  public void WriteToConsole( TestRunSummary summary, bool verbose = false, bool useColors = true, bool failuresOnly = false )
   {
     var s = new StringBuilder();
 
     s.Append('\n');
-    s.Append(CreateOutput(summary, verbose));
+    s.Append(CreateOutput(summary, verbose, failuresOnly));
     s.Append('\n');
 
     // Strip color variables if colors are disabled or output is redirected
@@ -32,14 +32,14 @@ public class ConsoleOutputFormatter : IOutputFormatter
     }
   }
 
-  public async Task SaveToFileAsync( TestRunSummary summary, string filePath, bool verbose = false )
+  public async Task SaveToFileAsync( TestRunSummary summary, string filePath, bool verbose = false, bool failuresOnly = false )
   {
-    var content = CreateOutput(summary, verbose);
+    var content = CreateOutput(summary, verbose, failuresOnly);
     var plainText = ColorExtensions.StripColorVariables(content);
     await File.WriteAllTextAsync(filePath, plainText);
   }
 
-  private string CreateOutput( TestRunSummary summary, bool verbose = false )
+  private string CreateOutput( TestRunSummary summary, bool verbose = false, bool failuresOnly = false )
   {
     var s = new StringBuilder();
 
@@ -56,7 +56,10 @@ public class ConsoleOutputFormatter : IOutputFormatter
 
     // Results by file
     // Group results by file for better organization
-    var resultsByFile = summary.Results.GroupBy(r => r.Test.SourceFile).ToList();
+    var displayResults = failuresOnly
+      ? summary.Results.Where(r => r.Status == TestStatus.Failed)
+      : summary.Results;
+    var resultsByFile = displayResults.GroupBy(r => r.Test.SourceFile).ToList();
 
     foreach (var fileGroup in resultsByFile) {
       var fileName = Path.GetFileName(fileGroup.Key);

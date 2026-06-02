@@ -8,19 +8,19 @@ using Resty.Core.Models;
 /// </summary>
 public class HtmlOutputFormatter : IOutputFormatter
 {
-  public void WriteToConsole( TestRunSummary summary, bool verbose = false, bool useColors = true )
+  public void WriteToConsole( TestRunSummary summary, bool verbose = false, bool useColors = true, bool failuresOnly = false )
   {
-    var html = GenerateHtml(summary, verbose);
+    var html = GenerateHtml(summary, verbose, failuresOnly);
     Console.WriteLine(html);
   }
 
-  public async Task SaveToFileAsync( TestRunSummary summary, string filePath, bool verbose = false )
+  public async Task SaveToFileAsync( TestRunSummary summary, string filePath, bool verbose = false, bool failuresOnly = false )
   {
-    var html = GenerateHtml(summary, verbose: true); // Always include full details when saving
+    var html = GenerateHtml(summary, verbose: true, failuresOnly); // Always include full details when saving
     await File.WriteAllTextAsync(filePath, html, Encoding.UTF8);
   }
 
-  private string GenerateHtml( TestRunSummary summary, bool verbose )
+  private string GenerateHtml( TestRunSummary summary, bool verbose, bool failuresOnly )
   {
     var html = new StringBuilder();
 
@@ -47,7 +47,7 @@ public class HtmlOutputFormatter : IOutputFormatter
     html.AppendLine(GenerateSummaryDashboard(summary));
 
     // Test Results
-    html.AppendLine(GenerateTestResults(summary, verbose));
+    html.AppendLine(GenerateTestResults(summary, verbose, failuresOnly));
 
     // Metadata
     html.AppendLine(GenerateMetadata(summary));
@@ -107,10 +107,13 @@ public class HtmlOutputFormatter : IOutputFormatter
     return html.ToString();
   }
 
-  private string GenerateTestResults( TestRunSummary summary, bool verbose )
+  private string GenerateTestResults( TestRunSummary summary, bool verbose, bool failuresOnly )
   {
     var html = new StringBuilder();
-    var resultsByFile = summary.Results.GroupBy(r => r.Test.SourceFile).ToList();
+    var displayResults = failuresOnly
+      ? summary.Results.Where(r => r.Status == TestStatus.Failed)
+      : summary.Results;
+    var resultsByFile = displayResults.GroupBy(r => r.Test.SourceFile).ToList();
 
     html.AppendLine("        <section class=\"test-results\">");
     html.AppendLine("            <h2>Test Results</h2>");

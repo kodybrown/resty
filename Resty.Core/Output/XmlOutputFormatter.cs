@@ -10,21 +10,21 @@ using Resty.Core.Models;
 /// </summary>
 public class XmlOutputFormatter : IOutputFormatter
 {
-  public void WriteToConsole( TestRunSummary summary, bool verbose = false, bool useColors = true )
+  public void WriteToConsole( TestRunSummary summary, bool verbose = false, bool useColors = true, bool failuresOnly = false )
   {
-    var xml = ConvertToXmlString(summary);
+    var xml = ConvertToXmlString(summary, failuresOnly);
     Console.WriteLine(xml);
   }
 
-  public async Task SaveToFileAsync( TestRunSummary summary, string filePath, bool verbose = false )
+  public async Task SaveToFileAsync( TestRunSummary summary, string filePath, bool verbose = false, bool failuresOnly = false )
   {
-    var xml = ConvertToXmlString(summary);
+    var xml = ConvertToXmlString(summary, failuresOnly);
     await File.WriteAllTextAsync(filePath, xml, Encoding.UTF8);
   }
 
-  private string ConvertToXmlString( TestRunSummary summary )
+  private string ConvertToXmlString( TestRunSummary summary, bool failuresOnly )
   {
-    var junitModel = ConvertToJUnitModel(summary);
+    var junitModel = ConvertToJUnitModel(summary, failuresOnly);
 
     var serializer = new XmlSerializer(typeof(JUnitTestSuites));
     var settings = new XmlWriterSettings {
@@ -41,7 +41,7 @@ public class XmlOutputFormatter : IOutputFormatter
     return stringWriter.ToString();
   }
 
-  private JUnitTestSuites ConvertToJUnitModel( TestRunSummary summary )
+  private JUnitTestSuites ConvertToJUnitModel( TestRunSummary summary, bool failuresOnly )
   {
     var testSuites = new JUnitTestSuites {
       Tests = summary.TotalTests,
@@ -51,7 +51,10 @@ public class XmlOutputFormatter : IOutputFormatter
     };
 
     // Group tests by source file to create test suites
-    var resultsByFile = summary.Results.GroupBy(r => r.Test.SourceFile).ToList();
+    var displayResults = failuresOnly
+      ? summary.Results.Where(r => r.Status == TestStatus.Failed)
+      : summary.Results;
+    var resultsByFile = displayResults.GroupBy(r => r.Test.SourceFile).ToList();
 
     foreach (var fileGroup in resultsByFile) {
       var testSuite = new JUnitTestSuite {

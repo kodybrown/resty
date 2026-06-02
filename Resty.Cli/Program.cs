@@ -1,12 +1,13 @@
 namespace Resty;
 
 using System.Text;
+using System.Text.Json;
 using Resty.Core.Exceptions;
 using Resty.Core.Execution;
 using Resty.Core.Models;
 using Resty.Core.Output;
 
-public enum OutputFormats { Text = 0, Markdown, Json, Xml, Html }
+public enum OutputFormats { Text = 0, Markdown, Json, Xml, Html, Agent }
 
 internal class Program : Resty.Helpers.ConsoleApplication
 {
@@ -27,6 +28,9 @@ internal class Program : Resty.Helpers.ConsoleApplication
   private List<string> OptTests { get; set; } = [];
   private List<string> OptFilters { get; set; } = [];
   private OutputFormats OptOutputFormat { get; set; } = OutputFormats.Text;
+  private bool OptOutputFormatWasSet { get; set; } = false;
+  private bool OptAgent { get; set; } = false;
+  private bool OptFailuresOnly { get; set; } = false;
   private bool OptMock { get; set; } = false; // Enable mocking engine globally
   private bool OptMockWasSet { get; set; } = false; // Track if set via CLI
   private string? OptSaveFile { get; set; } = null;
@@ -47,6 +51,11 @@ internal class Program : Resty.Helpers.ConsoleApplication
     if (exit_code != 0) {
       // Ensure session lock is released on early exit
       return exit_code < 0 ? exit_code : 0;
+    }
+
+    if (OptAgent) {
+      OptOutputFormat = OutputFormats.Agent;
+      OptColor = false;
     }
 
     // Allow RESTY_MOCK env var to set global mocking when CLI flag not provided
@@ -134,18 +143,28 @@ internal class Program : Resty.Helpers.ConsoleApplication
               switch (value.ToLower()) {
                 case "text" or "txt":
                   OptOutputFormat = OutputFormats.Text;
+                  OptOutputFormatWasSet = true;
                   break;
                 case "markdown" or "md":
                   OptOutputFormat = OutputFormats.Markdown;
+                  OptOutputFormatWasSet = true;
                   break;
                 case "json" or "jsn":
                   OptOutputFormat = OutputFormats.Json;
+                  OptOutputFormatWasSet = true;
                   break;
                 case "xml":
                   OptOutputFormat = OutputFormats.Xml;
+                  OptOutputFormatWasSet = true;
                   break;
                 case "html" or "htm":
                   OptOutputFormat = OutputFormats.Html;
+                  OptOutputFormatWasSet = true;
+                  break;
+                case "agent":
+                  OptOutputFormat = OutputFormats.Agent;
+                  OptOutputFormatWasSet = true;
+                  OptAgent = true;
                   break;
                 default:
                   Console.WriteLine($"Unknown output format: {value}");
@@ -153,6 +172,18 @@ internal class Program : Resty.Helpers.ConsoleApplication
                   break;
               }
             }
+            continue;
+          }
+
+          case "agent" or "ai": {
+            i = GetSubArgument<bool>(args, i, out var found, out var value);
+            OptAgent = found ? value : true;
+            continue;
+          }
+
+          case "failures-only": {
+            i = GetSubArgument<bool>(args, i, out var found, out var value);
+            OptFailuresOnly = found ? value : true;
             continue;
           }
 
@@ -220,7 +251,6 @@ internal class Program : Resty.Helpers.ConsoleApplication
 
     return exit_code;
   }
-
   private void ShowHelp( string? topic = null, bool? includeExamples = null )
   {
     Console.WriteLine("Resty - REST API Testing Tool");
@@ -246,9 +276,11 @@ internal class Program : Resty.Helpers.ConsoleApplication
     Console.WriteLine("    -f, --filter <PATTERN>  Run tests matching pattern (can be used multiple times)");
     Console.WriteLine();
     Console.WriteLine("OUTPUT:");
-    Console.WriteLine("    -o, --output <FORMAT>   Output format: text (default), json, xml, html");
+    Console.WriteLine("    -o, --output <FORMAT>   Output format: text (default), markdown, json, xml, html, agent");
     Console.WriteLine("    -s, --save <FILE>       Save results to file");
     Console.WriteLine("    -c, --color <BOOL>      Enable colored console output (default: true)");
+    Console.WriteLine("    --agent, --ai           Enable compact agent-mode JSON output (overrides --output)");
+    Console.WriteLine("    --failures-only         Show only failed test details while preserving summary totals");
     Console.WriteLine();
     Console.WriteLine("VALIDATION:");
     Console.WriteLine("    --dry-run               Validate test files without executing");
@@ -272,6 +304,7 @@ internal class Program : Resty.Helpers.ConsoleApplication
     Console.WriteLine("    resty -l                        # List all available tests");
     Console.WriteLine("    resty --dry-run                 # Validate without running");
     Console.WriteLine("    resty -o json -s results.json   # Save JSON results to file");
+    Console.WriteLine("    resty --agent --failures-only   # Compact JSON optimized for agents");
     Console.WriteLine("    resty --color false             # Disable colored output");
     Console.WriteLine();
     Console.WriteLine("EXIT CODES:");
@@ -307,7 +340,7 @@ internal class Program : Resty.Helpers.ConsoleApplication
       // Step 1: Discover test files
       var testFiles = await DiscoverTestFilesAsync();
       if (testFiles.Count == 0) {
-        Console.WriteLine("No test files found.");
+        await OutputNoTestsFoundAsync();
         return 1;
       }
 
@@ -339,22 +372,13 @@ internal class Program : Resty.Helpers.ConsoleApplication
       // Step 7: Return appropriate exit code
       return results.HasFailures ? 1 : 0;
     } catch (MissingDependencyException mdx) {
-      Console.WriteLine($"Error: {mdx.Message}");
-      if (OptVerbose) {
-        Console.WriteLine(mdx.ToString());
-      }
+      await OutputAgentErrorOrConsoleAsync(3, "missing_dependency", mdx.Message, mdx);
       return 3;
     } catch (CircularDependencyException cdx) {
-      Console.WriteLine($"Error: {cdx.Message}");
-      if (OptVerbose) {
-        Console.WriteLine(cdx.ToString());
-      }
+      await OutputAgentErrorOrConsoleAsync(4, "circular_dependency", cdx.Message, cdx);
       return 4;
     } catch (Exception ex) {
-      Console.WriteLine($"Error: {ex.Message}");
-      if (OptVerbose) {
-        Console.WriteLine(ex.ToString());
-      }
+      await OutputAgentErrorOrConsoleAsync(2, "internal_error", ex.Message, ex);
       return 2;
     }
   }
@@ -390,11 +414,15 @@ internal class Program : Resty.Helpers.ConsoleApplication
 
   private Task ListTestsAsync( TestSuiteRunner runner, List<string> testFiles )
   {
-    Console.WriteLine("Available tests:");
-    Console.WriteLine();
-
     var allTests = runner.ListAvailableTests(testFiles);
     var groupedTests = allTests.GroupBy(t => t.SourceFile);
+
+    if (OptAgent) {
+      return OutputListTestsAgentAsync(allTests, groupedTests.Count());
+    }
+
+    Console.WriteLine("Available tests:");
+    Console.WriteLine();
 
     foreach (var group in groupedTests) {
       var fileName = Path.GetFileName(group.Key);
@@ -412,9 +440,6 @@ internal class Program : Resty.Helpers.ConsoleApplication
 
   private Task DryRunAsync( TestSuiteRunner runner, List<string> testFiles )
   {
-    Console.WriteLine("🔍 Dry run - validating test files...");
-    Console.WriteLine();
-
     var allTests = runner.ListAvailableTests(testFiles);
     var issues = new List<string>();
 
@@ -427,6 +452,13 @@ internal class Program : Resty.Helpers.ConsoleApplication
         issues.Add($"{Path.GetFileName(test.SourceFile)}:{test.SourceLine} - Test '{test.Name}' missing URL");
       }
     }
+
+    if (OptAgent) {
+      return OutputDryRunAgentAsync(allTests.Count, issues);
+    }
+
+    Console.WriteLine("🔍 Dry run - validating test files...");
+    Console.WriteLine();
 
     if (issues.Count > 0) {
       Console.WriteLine("❌ Issues found:");
@@ -460,22 +492,186 @@ internal class Program : Resty.Helpers.ConsoleApplication
   {
     var formatter = CreateOutputFormatter();
 
-    formatter.WriteToConsole(results, OptVerbose, OptColor);
+    formatter.WriteToConsole(results, OptVerbose, OptColor, OptFailuresOnly);
 
     if (!string.IsNullOrEmpty(OptSaveFile)) {
-      await formatter.SaveToFileAsync(results, OptSaveFile);
-      Console.WriteLine($"Results saved to: {OptSaveFile}");
+      var saveFormatter = CreateSaveOutputFormatter(OptSaveFile);
+      await saveFormatter.SaveToFileAsync(results, OptSaveFile, OptVerbose, OptFailuresOnly);
+      if (!OptAgent) {
+        Console.WriteLine($"Results saved to: {OptSaveFile}");
+      }
     }
   }
 
-  private IOutputFormatter CreateOutputFormatter()
+  private Task OutputNoTestsFoundAsync()
   {
-    return OptOutputFormat switch {
+    if (!OptAgent) {
+      Console.WriteLine("No test files found.");
+      return Task.CompletedTask;
+    }
+
+    return OutputAgentObjectAsync(new {
+      schemaVersion = "resty.agent.v1",
+      status = "failed",
+      exitCode = 1,
+      nextAction = "provide_test_path",
+      summary = new {
+        total = 0,
+        passed = 0,
+        failed = 0,
+        skipped = 0,
+        passRate = 0.0,
+        durationMs = 0
+      },
+      error = new {
+        type = "no_tests_found",
+        message = "No test files found."
+      },
+      results = Array.Empty<object>()
+    });
+  }
+
+  private Task OutputListTestsAgentAsync( List<HttpTest> tests, int fileCount )
+  {
+    var output = new {
+      schemaVersion = "resty.agent.v1",
+      status = "listed",
+      exitCode = 0,
+      nextAction = tests.Count > 0 ? "choose_tests_or_run" : "provide_test_path",
+      summary = new {
+        total = tests.Count,
+        files = fileCount
+      },
+      tests = tests.Select(t => new {
+        name = t.Name,
+        description = t.Description,
+        file = t.SourceFile,
+        line = t.SourceLine,
+        method = t.Method,
+        url = t.Url
+      }).ToList()
+    };
+
+    return OutputAgentObjectAsync(output);
+  }
+
+  private Task OutputDryRunAgentAsync( int totalTests, List<string> issues )
+  {
+    var output = new {
+      schemaVersion = "resty.agent.v1",
+      status = issues.Count > 0 ? "failed" : "passed",
+      exitCode = issues.Count > 0 ? 1 : 0,
+      nextAction = issues.Count > 0 ? "fix_invalid_test_file" : "run_tests",
+      summary = new {
+        total = totalTests,
+        issues = issues.Count
+      },
+      issues = issues.Select(ParseDryRunIssue).ToList()
+    };
+
+    return OutputAgentObjectAsync(output);
+  }
+
+  private async Task OutputAgentErrorOrConsoleAsync( int exitCode, string type, string message, Exception exception )
+  {
+    if (!OptAgent) {
+      Console.WriteLine($"Error: {message}");
+      if (OptVerbose) {
+        Console.WriteLine(exception.ToString());
+      }
+      return;
+    }
+
+    await OutputAgentObjectAsync(new {
+      schemaVersion = "resty.agent.v1",
+      status = "failed",
+      exitCode,
+      nextAction = type switch {
+        "missing_dependency" => "fix_missing_dependency",
+        "circular_dependency" => "fix_cycle",
+        _ => "inspect_error"
+      },
+      error = new {
+        type,
+        message,
+        details = OptVerbose ? exception.ToString() : null
+      }
+    });
+  }
+
+  private async Task OutputAgentObjectAsync( object output )
+  {
+    var json = JsonSerializer.Serialize(output, new JsonSerializerOptions {
+      WriteIndented = false,
+      PropertyNamingPolicy = JsonNamingPolicy.CamelCase
+    });
+
+    Console.WriteLine(json);
+
+    if (!string.IsNullOrEmpty(OptSaveFile)) {
+      await File.WriteAllTextAsync(OptSaveFile, json);
+    }
+  }
+
+  private static object ParseDryRunIssue( string issue )
+  {
+    var file = string.Empty;
+    int? line = null;
+    var message = issue;
+
+    var separator = issue.IndexOf(" - ", StringComparison.Ordinal);
+    if (separator >= 0) {
+      message = issue[(separator + 3)..];
+      var location = issue[..separator];
+      var lineSeparator = location.LastIndexOf(':');
+      if (lineSeparator >= 0) {
+        file = location[..lineSeparator];
+        if (int.TryParse(location[(lineSeparator + 1)..], out var parsedLine)) {
+          line = parsedLine;
+        }
+      }
+    }
+
+    return new { file, line, message };
+  }
+
+  private IOutputFormatter CreateOutputFormatter()
+    => CreateOutputFormatter(OptOutputFormat);
+
+  private IOutputFormatter CreateSaveOutputFormatter( string filePath )
+  {
+    if (OptAgent) {
+      return new AgentOutputFormatter();
+    }
+
+    if (OptOutputFormatWasSet) {
+      return CreateOutputFormatter(OptOutputFormat);
+    }
+
+    return CreateOutputFormatter(GetOutputFormatFromExtension(filePath));
+  }
+
+  private static IOutputFormatter CreateOutputFormatter( OutputFormats format )
+  {
+    return format switch {
       OutputFormats.Markdown => new MarkdownOutputFormatter(),
       OutputFormats.Json => new JsonOutputFormatter(),
       OutputFormats.Xml => new XmlOutputFormatter(),
       OutputFormats.Html => new HtmlOutputFormatter(),
+      OutputFormats.Agent => new AgentOutputFormatter(),
       _ => new ConsoleOutputFormatter(),
+    };
+  }
+
+  private static OutputFormats GetOutputFormatFromExtension( string filePath )
+  {
+    return Path.GetExtension(filePath).ToLowerInvariant() switch {
+      ".md" or ".markdown" => OutputFormats.Markdown,
+      ".json" => OutputFormats.Json,
+      ".xml" => OutputFormats.Xml,
+      ".html" or ".htm" => OutputFormats.Html,
+      ".agent" => OutputFormats.Agent,
+      _ => OutputFormats.Text,
     };
   }
 }
