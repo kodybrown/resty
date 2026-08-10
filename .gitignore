@@ -1,62 +1,87 @@
-# Development notes
+# See https://docs.github.com/get-started/getting-started-with-git/ignoring-files for more about ignoring files.
+
+# Project-specific local directories
+/.plan/
+/artifacts/
+/builds/
+/design/
+/publish/
+
+# Project-specific local (and private) files
+**/.code_compare
+**/.ground_zero
 **/*.ground_zero
-**/.plan/
-/CopyToBin.bat
-
-# Private/sensitive files
-#**/*.private.yaml
-#**/*.private.yml
+**/.mcp_file_state.json
+**/[Nn][Oo][Tt][Ee][Ss].md
+**/[Tt][Oo][Dd][Oo].md
+**/*.[Bb][Aa][Tt]
+**/*.[Cc][Mm][Dd]
+**/*.private.*
 **/*.secrets.*
-**/appsettings.Development.json
-**/appsettings.Local.json
+**/CodeSnapshot.txt
 
-# Build outputs
-[Bb]in/
-[Oo]bj/
-artifacts/
-builds/
-publish/
+# The `launchSettings.json` file is the checked-in template with settings structure only!
+# Environment-specific files (launchSettings.<environment>.json) must stay local.
+**/launchSettings.*.json
+!**/launchSettings.json
+
+# The `appsettings.json` file is the checked-in template with settings structure only!
+# Environment-specific files (appsettings.<environment>.json) must stay local.
+**/appsettings.*.json
+!**/appsettings.json
+
+# System files
+**/.DS_Store
+**/[Dd]esktop.ini
+**/[Tt]humbs.db
 
 # Visual Studio
-.vs/
+**/.vs/
+**/[Bb]in/
+**/[Oo]bj/
 **/*.suo
 **/*.user
 **/*.userosscache
 **/*.sln.docstates
-
-# User-specific files
 **/*.rsuser
-**/*.suo
-**/*.user
-**/*.userosscache
-**/*.sln.docstates
 **/*.userprefs
 
-# OS generated files
-.DS_Store
-.DS_Store?
-._*
-.Spotlight-V100
-.Trashes
-ehthumbs.db
-Thumbs.db
-[Dd]esktop.ini
+# Tests and diagnostics
+**/*.coverage
+**/*.coveragexml
+**/*.trx
+**/coverage/
+**/tests/e2e/playwright-report/
+**/tests/e2e/test-results/
+**/tests/e2e/auth/
+**/TestResults/
+**/[Tt]est[Rr]esult*/
 
-# Logs and temp files
-*.log
-*.tmp
-*.temp
+# Angular
+**/.angular/cache/
+**/typings/
 
-# Test results
-TestResults/
-[Tt]est[Rr]esult*/
-*.trx
-*.coverage
-*.coveragexml
+# Node
+**/node_modules/
+**/npm-debug.log*
 
 # NuGet
-packages/
-*.nupkg
-*.snupkg
-project.lock.json
-project.fragment.lock.json
+**/packages/
+**/*.nupkg
+**/*.snupkg
+**/project.lock.json
+**/project.fragment.lock.json
+
+# Python
+**/__pycache__/
+
+# Compiled output
+**/dist/
+**/tmp/
+**/.sass-cache/
+
+# Logs and temporary files
+**/*.log
+**/*.temp
+**/*.tmp
+**/logs/

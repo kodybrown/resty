@@ -154,8 +154,13 @@ public class MockingTests
       Assert.Equal(200, (int)result.StatusCode!); // last wins
       Assert.Contains("duplicate mock", sw.ToString(), StringComparison.OrdinalIgnoreCase);
     } finally {
-      if (File.Exists(f1)) File.Delete(f1);
-      if (File.Exists(f2)) File.Delete(f2);
+      if (File.Exists(f1)) {
+        File.Delete(f1);
+      }
+
+      if (File.Exists(f2)) {
+        File.Delete(f2);
+      }
     }
   }
 
@@ -190,7 +195,9 @@ public class MockingTests
       Assert.True(result.Passed);
       Assert.Contains("hello", result.ResponseBody);
     } finally {
-      if (File.Exists(f)) File.Delete(f);
+      if (File.Exists(f)) {
+        File.Delete(f);
+      }
     }
   }
 }

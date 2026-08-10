@@ -644,11 +644,14 @@ public class HttpTestExecutor
     if (value is null) { return false; }
     switch (value) {
       case int i:
-        result = i; return true;
+        result = i;
+        return true;
       case long l:
-        result = (int)l; return true;
+        result = (int)l;
+        return true;
       case double d:
-        result = (int)d; return true;
+        result = (int)d;
+        return true;
       case string s:
         var resolved = vars.ResolveVariables(s) ?? string.Empty;
         return int.TryParse(resolved, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out result);
@@ -877,7 +880,7 @@ public class HttpTestExecutor
       remaining = remaining.Substring(0, remaining.Length - m.Length);
     }
 
-    IEnumerable<JToken> BaseSelect(string path)
+    IEnumerable<JToken> BaseSelect( string path )
     {
       try {
         return json.SelectTokens(path) ?? Enumerable.Empty<JToken>();
@@ -987,13 +990,19 @@ public class HttpTestExecutor
   {
     // Robust type detection that treats numeric/boolean strings as their logical types
     switch (t.Type) {
-      case JTokenType.Array: return "array";
-      case JTokenType.Object: return "object";
+      case JTokenType.Array:
+        return "array";
+      case JTokenType.Object:
+        return "object";
       case JTokenType.Integer:
-      case JTokenType.Float: return "number";
-      case JTokenType.Boolean: return "boolean";
-      case JTokenType.Null: return "null";
-      case JTokenType.Date: return "date";
+      case JTokenType.Float:
+        return "number";
+      case JTokenType.Boolean:
+        return "boolean";
+      case JTokenType.Null:
+        return "null";
+      case JTokenType.Date:
+        return "date";
       case JTokenType.String: {
         var s = t.Value<string>() ?? string.Empty;
         if (bool.TryParse(s, out _)) { return "boolean"; }

@@ -1,4 +1,4 @@
-﻿<?xml version="1.0" encoding="utf-16"?>
+<?xml version="1.0" encoding="utf-16"?>
 <testsuites xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema" tests="7" failures="1" time="1.777" timestamp="2025-09-16T00:19:05.7164963Z">
   <testsuite name="api-tests" tests="5" failures="1" time="1.145" timestamp="2025-09-16T00:19:05.7164963Z">
     <testcase classname="api-tests.GetTests" name="authenticated-request" time="0.002">

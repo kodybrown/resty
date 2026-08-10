@@ -1,10 +1,33 @@
-# Set default behavior to automatically normalize line endings.
-* text=auto
+# Set default behaviors to automatically normalize line endings.
+# ===========================================================================
+# Handle line endings automatically for files detected as text
+# and leave all files detected as binary untouched.
+#
+# Use `* text eol=lf` to always use specific line-endings.
+# Use `* text=auto` to check in as LF, but checkout matching the OS.
+#
+
+*          text=auto eol=lf
 
 # Force CRLF line-endings.
-*.bat      eol=crlf
-*.BAT      eol=crlf
-*.cmd      eol=crlf
-*.CMD      eol=crlf
-*.ps1      eol=crlf
-*.PS1      eol=crlf
+*.[Bb][Aa][Tt] text eol=crlf
+*.[Cc][Mm][Dd] text eol=crlf
+
+# Force binary files.
+*.7z       binary
+*.aseprite binary
+*.dll      binary
+*.exe      binary
+*.ico      binary
+*.otf      binary
+*.pdn      binary
+*.png      binary
+*.ttf      binary
+*.woff     binary
+*.woff2    binary
+*.zip      binary
+
+# PTS document formats are always plain UTF-8-compatible text.
+*.mdx      text eol=lf
+*.mds      text eol=lf
+*.mdp      text eol=lf

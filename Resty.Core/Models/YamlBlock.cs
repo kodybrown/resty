@@ -239,7 +239,7 @@ public record YamlBlock
     && (
       (!string.IsNullOrEmpty(Method) && !string.IsNullOrEmpty(Url))
       || (Mock != null)
-      || (MockOnly)
+      || MockOnly
     );
 
   /// <summary>
