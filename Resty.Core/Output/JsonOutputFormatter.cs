@@ -58,6 +58,7 @@ public class JsonOutputFormatter : IOutputFormatter
       Url = result.RequestInfo?.Url ?? result.Test.Url,
       Description = result.Test.Description,
       Status = result.Status.ToString(),
+      SkipReason = result.SkipReason?.ToString(),
       Duration = result.Duration.TotalSeconds,
       StatusCode = result.StatusCode.HasValue ? (int)result.StatusCode.Value : null,
       ErrorMessage = result.ErrorMessage,

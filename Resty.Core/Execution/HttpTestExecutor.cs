@@ -43,23 +43,46 @@ public class HttpTestExecutor
       bool optTimeoutWasSet = false,
       CancellationToken cancellationToken = default )
   {
-    return await ExecuteWithRetryAsync(test, variableStore, retryCount, optTimeout, optTimeoutWasSet, cancellationToken);
+    var retryPolicy = retryCount != 0
+      ? RetryPolicyDefinition.FromLegacyRetryCount(retryCount)
+      : test.Retry ?? RetryPolicyDefinition.FromLegacyRetryCount(0);
+    return await ExecuteWithRetryAsync(test, variableStore, retryPolicy, optTimeout, optTimeoutWasSet, cancellationToken);
   }
 
   /// <summary>
-  /// Executes an HTTP test with retry logic and exponential backoff.
+  /// Executes an HTTP test using its resolved retry policy.
   /// </summary>
   private async Task<TestResult> ExecuteWithRetryAsync(
       HttpTest test,
       VariableStore variableStore,
-      int retryCount,
+      RetryPolicyDefinition retryPolicy,
       int? optTimeout,
       bool optTimeoutWasSet,
       CancellationToken cancellationToken )
   {
-    var totalAttempts = Math.Max(1, retryCount + 1); // At least 1 attempt
+    var totalAttempts = Math.Max(1, retryPolicy.Attempts);
     Exception? lastException = null;
     TestResult? lastResult = null;
+
+    TimeSpan waitBefore;
+    TimeSpan retryDelay;
+    try {
+      waitBefore = ResolveDuration(test.WaitBefore, variableStore, "wait_before");
+      retryDelay = ResolveDuration(retryPolicy.Delay, variableStore, "retry.delay");
+    } catch (Exception ex) {
+      var now = DateTime.UtcNow;
+      return TestResult.Failure(
+        test,
+        now,
+        now,
+        $"Invalid timing configuration: {ex.Message}",
+        ex,
+        variableSnapshot: variableStore.GetVariableSnapshot());
+    }
+
+    if (waitBefore > TimeSpan.Zero) {
+      await DelayAsync(waitBefore, cancellationToken);
+    }
 
     // Determine timeout to use based on priority:
     // 1. OptTimeout (if OptTimeoutWasSet) overrides everything
@@ -111,7 +134,7 @@ public class HttpTestExecutor
         if (isPass && test.Expect?.Headers is { Count: > 0 }) {
           var headerValidation = ValidateExpectedHeaders(responseHeaders, test.Expect.Headers, variableStore);
           if (!headerValidation.IsValid) {
-            var failureResult = TestResult.Failure(
+            lastResult = TestResult.Failure(
               test,
               startTime,
               endTime,
@@ -122,7 +145,11 @@ public class HttpTestExecutor
               CreateRequestInfo(resolvedTest),
               variableSnapshot
             );
-            return failureResult;
+            if (isLastAttempt || !retryPolicy.ExpectationFailures) {
+              return lastResult;
+            }
+            await DelayBeforeRetryAsync(retryPolicy, retryDelay, attempt, cancellationToken);
+            continue;
           }
         }
 
@@ -131,7 +158,7 @@ public class HttpTestExecutor
         if (isPass && test.Expect?.Values is { Count: > 0 }) {
           var valueValidation = ValidateExpectedValues(responseBody, test.Expect.Values, variableStore);
           if (!valueValidation.IsValid) {
-            var failureResult = TestResult.Failure(
+            lastResult = TestResult.Failure(
               test,
               startTime,
               endTime,
@@ -142,7 +169,11 @@ public class HttpTestExecutor
               CreateRequestInfo(resolvedTest),
               variableSnapshot
             );
-            return failureResult;
+            if (isLastAttempt || !retryPolicy.ExpectationFailures) {
+              return lastResult;
+            }
+            await DelayBeforeRetryAsync(retryPolicy, retryDelay, attempt, cancellationToken);
+            continue;
           }
           valueExpectCaptured = valueValidation.StoredVariables;
         }
@@ -152,7 +183,7 @@ public class HttpTestExecutor
         var captureFailures = new List<string>();
         var parseFailed = false;
         if (isPass && resolvedTest.Extractors.Count > 0) {
-          var extraction = ExtractResponseVariables(responseBody, resolvedTest.Extractors);
+          var extraction = ExtractResponseVariables(response, responseBody, resolvedTest.Extractors);
           extractedVariables = extraction.Extracted;
           captureFailures = extraction.Failures;
           parseFailed = extraction.ParseFailed;
@@ -232,11 +263,13 @@ public class HttpTestExecutor
             variableSnapshot
           );
 
-          // If this is the last attempt or it's a non-retryable status, return immediately
-          if (isLastAttempt || !IsRetryableStatusCode(response.StatusCode)) {
+          // If this is the last attempt or its status is not configured for retry, return immediately
+          if (isLastAttempt || !retryPolicy.Statuses.Codes.Contains((int)response.StatusCode)) {
             return lastResult;
           }
         }
+      } catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) {
+        throw;
       } catch (Exception ex) {
         var endTime = DateTime.UtcNow;
         var variableSnapshot = variableStore.GetVariableSnapshot();
@@ -255,10 +288,9 @@ public class HttpTestExecutor
         }
       }
 
-      // Wait before retry (exponential backoff: 1s, 2s, 4s, 8s, ...)
+      // Wait before retry using the selected policy.
       if (!isLastAttempt) {
-        var delayMs = (int)Math.Pow(2, attempt - 1) * 1000; // 1s, 2s, 4s, 8s
-        await Task.Delay(Math.Min(delayMs, 30000), cancellationToken); // Cap at 30 seconds
+        await DelayBeforeRetryAsync(retryPolicy, retryDelay, attempt, cancellationToken);
       }
     }
 
@@ -470,8 +502,8 @@ public class HttpTestExecutor
 
   private static bool IsPass( HttpResponseMessage response, HttpTest test )
   {
-    return test.ExpectedStatus.HasValue
-      ? (int)response.StatusCode == test.ExpectedStatus.Value
+    return test.ExpectedStatuses is { Count: > 0 } expectedStatuses
+      ? expectedStatuses.Contains((int)response.StatusCode)
       : response.IsSuccessStatusCode;
   }
 
@@ -479,8 +511,11 @@ public class HttpTestExecutor
   {
     string errorMessage;
 
-    if (test.ExpectedStatus.HasValue) {
-      errorMessage = $"Expected status {test.ExpectedStatus.Value} but got {(int)response.StatusCode} {response.ReasonPhrase}";
+    if (test.ExpectedStatuses is { Count: > 0 } expectedStatuses) {
+      var expectation = expectedStatuses.Count == 1
+        ? $"status {expectedStatuses[0]}"
+        : $"one of statuses [{string.Join(", ", expectedStatuses)}]";
+      errorMessage = $"Expected {expectation} but got {(int)response.StatusCode} {response.ReasonPhrase}";
     } else {
       errorMessage = $"HTTP {(int)response.StatusCode} {response.ReasonPhrase}";
     }
@@ -499,18 +534,62 @@ public class HttpTestExecutor
     return code >= 200 && code <= 299 && statusCode != HttpStatusCode.NoContent;
   }
 
-  private static bool IsRetryableStatusCode( HttpStatusCode statusCode )
+  private async Task DelayBeforeRetryAsync(
+      RetryPolicyDefinition retryPolicy,
+      TimeSpan baseDelay,
+      int completedAttempt,
+      CancellationToken cancellationToken )
   {
-    // Retry on server errors and some client errors
-    return statusCode switch {
-      HttpStatusCode.InternalServerError => true,    // 500
-      HttpStatusCode.BadGateway => true,             // 502
-      HttpStatusCode.ServiceUnavailable => true,     // 503
-      HttpStatusCode.GatewayTimeout => true,         // 504
-      HttpStatusCode.RequestTimeout => true,         // 408
-      HttpStatusCode.TooManyRequests => true,        // 429
-      _ => false
+    var delay = retryPolicy.Backoff switch {
+      RetryBackoffKind.Fixed => baseDelay,
+      RetryBackoffKind.Exponential => TimeSpan.FromMilliseconds(
+        Math.Min(baseDelay.TotalMilliseconds * Math.Pow(2, completedAttempt - 1), 30000)),
+      _ => throw new InvalidOperationException($"Unsupported retry backoff '{retryPolicy.Backoff}'.")
     };
+
+    if (delay > TimeSpan.Zero) {
+      await DelayAsync(delay, cancellationToken);
+    }
+  }
+
+  /// <summary>
+  /// Waits for a configured workflow delay. Overridable for deterministic tests.
+  /// </summary>
+  protected virtual Task DelayAsync( TimeSpan delay, CancellationToken cancellationToken )
+  {
+    return Task.Delay(delay, cancellationToken);
+  }
+
+  private static TimeSpan ResolveDuration(
+      object? rawValue,
+      VariableStore variableStore,
+      string fieldName )
+  {
+    if (rawValue == null) {
+      return TimeSpan.Zero;
+    }
+
+    var resolvedValue = rawValue is string text
+      ? variableStore.ResolveValue(text)
+      : rawValue;
+
+    if (resolvedValue is string durationText
+      && TimeSpan.TryParse(
+        durationText,
+        System.Globalization.CultureInfo.InvariantCulture,
+        out var parsedDuration)) {
+      resolvedValue = parsedDuration;
+    }
+
+    if (resolvedValue is not TimeSpan duration) {
+      throw new InvalidOperationException(
+        $"{fieldName} must resolve to a duration, but produced {resolvedValue?.GetType().Name ?? "null"}.");
+    }
+    if (duration < TimeSpan.Zero) {
+      throw new InvalidOperationException($"{fieldName} cannot be negative.");
+    }
+
+    return duration;
   }
 
   /// <summary>
@@ -627,7 +706,7 @@ public class HttpTestExecutor
     var parts = new List<string>();
     foreach (var (k, v) in dict) {
       var key = Uri.EscapeDataString(k ?? string.Empty);
-      var val = Uri.EscapeDataString(v?.ToString() ?? string.Empty);
+      var val = Uri.EscapeDataString(VariableStore.FormatInvariant(v));
       parts.Add($"{key}={val}");
     }
     return string.Join("&", parts);
@@ -661,22 +740,24 @@ public class HttpTestExecutor
     }
   }
 
-  private static object ResolveStructuredVariablesDeep( object value, VariableStore vars )
+  private static object? ResolveStructuredVariablesDeep( object? value, VariableStore vars )
   {
     switch (value) {
+      case null:
+        return null;
       case string s:
-        return vars.ResolveVariables(s);
+        return vars.ResolveValue(s);
       case IDictionary<string, object?> stringDict:
-        return stringDict.ToDictionary(kvp => kvp.Key, kvp => ResolveStructuredVariablesDeep(kvp.Value!, vars));
+        return stringDict.ToDictionary(kvp => kvp.Key, kvp => ResolveStructuredVariablesDeep(kvp.Value, vars));
       case IDictionary<object, object?> objDict:
         var result = new Dictionary<string, object?>();
         foreach (var kvp in objDict) {
           var key = kvp.Key?.ToString() ?? string.Empty;
-          result[key] = ResolveStructuredVariablesDeep(kvp.Value!, vars);
+          result[key] = ResolveStructuredVariablesDeep(kvp.Value, vars);
         }
         return result;
       case Newtonsoft.Json.Linq.JValue jv:
-        return jv.Value == null ? null! : ResolveStructuredVariablesDeep(jv.Value, vars);
+        return ResolveStructuredVariablesDeep(jv.Value, vars);
       case Newtonsoft.Json.Linq.JObject jo:
         var dict = new Dictionary<string, object?>();
         foreach (var p in jo.Properties()) {
@@ -1166,12 +1247,14 @@ public class HttpTestExecutor
         return (string.Empty, false, true);
       }
 
-      // Resolve variables within string (may produce numbers/strings)
-      var resolved = vars.ResolveVariables(s);
-      if (string.Equals(resolved, "$null", StringComparison.OrdinalIgnoreCase)) {
+      // Exact substitutions retain their type; embedded substitutions remain strings.
+      var resolved = vars.ResolveValue(s);
+      if (resolved is string resolvedString
+        && string.Equals(resolvedString, "$null", StringComparison.OrdinalIgnoreCase)) {
         return (null, true, false);
       }
-      if (string.Equals(resolved, "$empty", StringComparison.OrdinalIgnoreCase)) {
+      if (resolved is string emptyString
+        && string.Equals(emptyString, "$empty", StringComparison.OrdinalIgnoreCase)) {
         return (string.Empty, false, true);
       }
       return (resolved, false, false);
@@ -1312,10 +1395,17 @@ public class HttpTestExecutor
     if (expected is null) {
       return false;
     }
+    if (expected is byte b) { value = b; return true; }
+    if (expected is sbyte sb) { value = sb; return true; }
+    if (expected is short sh) { value = sh; return true; }
+    if (expected is ushort ush) { value = ush; return true; }
+    if (expected is int i) { value = i; return true; }
+    if (expected is uint ui) { value = ui; return true; }
+    if (expected is long l) { value = l; return true; }
+    if (expected is ulong ul) { value = ul; return true; }
+    if (expected is decimal m) { value = (double)m; return true; }
     if (expected is double d) { value = d; return true; }
     if (expected is float f) { value = f; return true; }
-    if (expected is long l) { value = l; return true; }
-    if (expected is int i) { value = i; return true; }
     if (expected is string s) {
       return double.TryParse(s, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out value);
     }
@@ -1399,15 +1489,31 @@ public class HttpTestExecutor
   }
 
   /// <summary>
-  /// Extracts variables from the response body using the configured extractors.
+  /// Extracts variables from response metadata or the response body using the configured extractors.
   /// </summary>
-  private (Dictionary<string, object> Extracted, List<string> Failures, bool ParseFailed) ExtractResponseVariables(
+  private static (Dictionary<string, object> Extracted, List<string> Failures, bool ParseFailed) ExtractResponseVariables(
+      HttpResponseMessage response,
       string responseBody,
       Dictionary<string, string> extractors )
   {
     var extractedVariables = new Dictionary<string, object>();
     var failures = new List<string>();
     var parseFailed = false;
+
+    var bodyExtractors = new Dictionary<string, string>();
+    foreach (var (variableName, extractor) in extractors) {
+      if (string.Equals(extractor, "$response.status", StringComparison.OrdinalIgnoreCase)) {
+        extractedVariables[variableName] = (int)response.StatusCode;
+      } else if (extractor.StartsWith("$response.", StringComparison.OrdinalIgnoreCase)) {
+        failures.Add(variableName);
+      } else {
+        bodyExtractors[variableName] = extractor;
+      }
+    }
+
+    if (bodyExtractors.Count == 0) {
+      return (extractedVariables, failures, false);
+    }
 
     if (string.IsNullOrEmpty(responseBody)) {
       // No body to parse; treat as parse failed for strict evaluation
@@ -1418,7 +1524,7 @@ public class HttpTestExecutor
       // Parse response as JSON
       var jsonResponse = JToken.Parse(responseBody);
 
-      foreach (var (variableName, jsonPath) in extractors) {
+      foreach (var (variableName, jsonPath) in bodyExtractors) {
         try {
           // Use JSON path to extract value
           var extractedToken = jsonResponse.SelectToken(jsonPath);

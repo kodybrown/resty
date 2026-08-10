@@ -204,14 +204,25 @@ public record YamlBlock
   public Dictionary<string, string>? Capture { get; init; }
 
   /// <summary>
+  /// Optional bounded expression controlling whether this test executes.
+  /// </summary>
+  public object? When { get; init; }
+
+  /// <summary>
   /// Whether this test is disabled and should be skipped during execution.
   /// </summary>
   public bool Disabled { get; init; } = false;
 
   /// <summary>
-  /// Number of times to retry the HTTP request if it fails (0 means no retries).
+  /// Optional delay before the first request attempt.
   /// </summary>
-  public int Retry { get; init; } = 0;
+  [YamlMember(Alias = "wait_before", ApplyNamingConventions = false)]
+  public object? WaitBefore { get; init; }
+
+  /// <summary>
+  /// Retry policy. YAML accepts either a legacy retry count or a structured policy.
+  /// </summary>
+  public RetryPolicyDefinition? Retry { get; init; }
 
   /// <summary>
   /// HTTP request timeout in seconds for this test. If null, uses default timeout.
@@ -335,9 +346,10 @@ public record MockResponse
 public record ExpectDefinition
 {
   /// <summary>
-  /// Expected HTTP status code (e.g., 200, 404). If not specified, defaults to 2xx success semantics.
+  /// Expected HTTP status code or codes (e.g., 200 or [200, 404]).
+  /// If not specified, defaults to 2xx success semantics.
   /// </summary>
-  public int? Status { get; init; }
+  public ExpectedStatusCodes? Status { get; init; }
 
   /// <summary>
   /// Expected response headers (case-insensitive names, case-sensitive values).

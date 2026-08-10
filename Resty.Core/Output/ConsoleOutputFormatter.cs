@@ -120,6 +120,10 @@ public class ConsoleOutputFormatter : IOutputFormatter
           }
         }
 
+        if (result.Status == TestStatus.Skipped && !string.IsNullOrEmpty(result.ErrorMessage)) {
+          s.Append("  > **Skipped**: ").Append(result.ErrorMessage).Append('\n');
+        }
+
         if (verbose) {
           s.Append('\n');
         }

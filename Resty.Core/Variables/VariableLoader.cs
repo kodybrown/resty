@@ -10,6 +10,7 @@ public static class VariableLoader
 {
   private static readonly IDeserializer YamlDeserializer = new DeserializerBuilder()
     .WithNamingConvention(NullNamingConvention.Instance)
+    .WithAttemptingUnquotedStringTypeDeserialization()
     .IgnoreUnmatchedProperties()
     .Build();
 

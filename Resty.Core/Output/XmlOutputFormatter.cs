@@ -81,6 +81,12 @@ public class XmlOutputFormatter : IOutputFormatter
           };
         }
 
+        if (result.Status == TestStatus.Skipped) {
+          testCase.Skipped = new JUnitSkipped {
+            Message = result.ErrorMessage ?? "Test skipped"
+          };
+        }
+
         // Add system output for additional context
         var systemOut = BuildSystemOutput(result);
         if (!string.IsNullOrEmpty(systemOut)) {

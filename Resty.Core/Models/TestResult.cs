@@ -18,6 +18,11 @@ public record TestResult
   public TestStatus Status { get; init; } = TestStatus.NotRun;
 
   /// <summary>
+  /// Classification for a skipped test, when applicable.
+  /// </summary>
+  public TestSkipReason? SkipReason { get; init; }
+
+  /// <summary>
   /// Time when test execution started.
   /// </summary>
   public DateTime StartTime { get; init; }
@@ -53,7 +58,7 @@ public record TestResult
   public Dictionary<string, object> ExtractedVariables { get; init; } = new();
 
   /// <summary>
-  /// Error message if the test failed.
+  /// Error or skip explanation, when applicable.
   /// </summary>
   public string? ErrorMessage { get; init; }
 
@@ -117,12 +122,14 @@ public record TestResult
   public static TestResult Skipped(
       HttpTest test,
       string reason,
-      Dictionary<string, (object Value, string Source)>? variableSnapshot = null )
+      Dictionary<string, (object Value, string Source)>? variableSnapshot = null,
+      TestSkipReason? skipReason = null )
   {
     var now = DateTime.UtcNow;
     return new TestResult {
       Test = test,
       Status = TestStatus.Skipped,
+      SkipReason = skipReason,
       StartTime = now,
       EndTime = now,
       ErrorMessage = reason,
@@ -169,6 +176,16 @@ public enum TestStatus
   Passed,
   Failed,
   Skipped
+}
+
+/// <summary>
+/// Why a test was skipped.
+/// </summary>
+public enum TestSkipReason
+{
+  Disabled,
+  ConditionFalse,
+  DependencyFailed
 }
 
 /// <summary>

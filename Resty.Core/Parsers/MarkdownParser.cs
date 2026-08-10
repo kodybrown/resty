@@ -11,7 +11,10 @@ public static class MarkdownParser
 {
   private static readonly IDeserializer YamlDeserializer = new DeserializerBuilder()
       .WithNamingConvention(CamelCaseNamingConvention.Instance)
+      .WithTypeConverter(new RetryPolicyDefinitionConverter())
+      .WithTypeConverter(new ExpectedStatusCodesConverter())
       .WithTypeConverter(new RequiresConverter())
+      .WithAttemptingUnquotedStringTypeDeserialization()
       .IgnoreUnmatchedProperties()
       .Build();
 

@@ -151,10 +151,88 @@ Both `.resty` and `.rest` extensions work identically. Choose based on:
 
 The tool will automatically discover both file types in your directories.
 
+## Variables And Typed Expressions
+
+Resty supports file variables, included YAML variables, captured variables,
+environment variables, and the legacy `$RandomNumber` value. The precedence
+order is captured, file, included, then environment.
+
+Use `${{ expression }}` for safe calculated values:
+
+```yaml
+variables:
+  hour_end: ${{ start_of_hour(utc_now()) }}
+  hour_start: ${{ hour_end - hours(1) }}
+  read_time: ${{ hour_start + minutes(20) }}
+  epoch_seconds: ${{ unix_seconds(read_time) }}
+  epoch_milliseconds: ${{ epoch_seconds * 1000 }}
+  initial_value: 1000.0
+  next_value: ${{ initial_value + 1.25 }}
+  sensor_ref: ${{ random_hex(16) }}
+  deduplication_id: ${{ uuid() }}
+```
+
+### Operators
+
+- Arithmetic: `+`, `-`, `*`, `/`, `%`.
+- Comparisons: `==`, `!=`, `<`, `<=`, `>`, `>=`.
+- Boolean: `&&`, `||`, `!`, plus `and`, `or`, `not`.
+- Parentheses control precedence.
+
+Numeric operators accept YAML numeric values and numeric expression results.
+Date/time values support addition and subtraction with durations. Subtracting
+two date/time values produces a duration.
+
+### Functions
+
+- `utc_now()` returns the suite's UTC clock snapshot.
+- `start_of_hour(value)` truncates a date/time value to its UTC hour.
+- `milliseconds(value)`, `seconds(value)`, `minutes(value)`, `hours(value)`,
+  and `days(value)` create durations.
+- `unix_seconds(value)` and `unix_milliseconds(value)` convert date/time values
+  to Unix epoch integers.
+- `format(value, format)` uses invariant .NET format strings.
+- `uuid()` returns a GUID value.
+- `random_int()` returns a non-negative integer.
+- `random_int(max)` returns an integer from zero through `max - 1`.
+- `random_int(min, max)` returns an integer from `min` through `max - 1`.
+- `random_hex(length)` returns uppercase hexadecimal text. Length must be from
+  1 through 1024.
+
+Variables inside expressions may be bare (`hour_start`) or `$`-prefixed
+(`$hour_start`). Computed variables resolve regardless of YAML declaration
+order. Missing references and cycles are errors. Computed values are cached for
+the suite run, so repeated UUID, random, and time-derived references stay
+consistent.
+
+### Typed Substitution
+
+When a structured YAML scalar is exactly `$variable` or
+`${{ expression }}`, Resty preserves the underlying type. When a substitution
+is embedded in a larger string, Resty formats it invariantly.
+
+```yaml
+body:
+  epochSeconds: $epoch_seconds
+  epochMilliseconds: ${{ epoch_seconds * 1000 }}
+  enabled: $enabled
+  label: DEMO-$sensor_ref
+```
+
+Numbers and booleans remain JSON numbers and booleans. Date/time values use
+round-trip `O` formatting when converted to text; durations use the constant
+`c` format. URLs and headers always remain strings. Raw string bodies also
+remain strings.
+
+Existing `$variable`, `$env:NAME`, and `$RandomNumber` substitutions remain
+supported. `$RandomNumber` retains its legacy five-digit string behavior.
+Unquoted YAML numbers and booleans are typed; quote identifiers or other values
+that resemble YAML scalars when they must remain strings.
+
 ## Expectations
 
 Use the `expect:` section to assert response properties. Currently supported:
-- `status`: exact HTTP status code that must be returned. If omitted, Resty uses standard success semantics (2xx).
+- `status`: one HTTP status integer or a list of acceptable integers. If omitted, Resty uses standard success semantics (2xx).
 - `headers`: a dictionary of expected response headers (names are case-insensitive, values are case-sensitive). Values may contain variables.
 - `values`: a list of JSON value assertions evaluated against the response body.
 
@@ -164,9 +242,6 @@ Each `values` rule has:
 - `value`: expected value (not required for exists/not_exists). Supports `$null`, `$empty`, variables.
 - `store_as`: optional variable name to capture the extracted value.
 - `ignore_case`: optional boolean, default true for string ops.
-
-Use the `expect:` section to assert response properties. Currently supported:
-- `status`: exact HTTP status code that must be returned. If omitted, Resty uses standard success semantics (2xx).
 
 Examples:
 
@@ -196,6 +271,103 @@ expect:
   headers:
     Content-Type: application/json
 ```
+
+```yaml
+# Accept either an existing resource or a not-found response
+expect:
+  status: [200, 404]
+capture:
+  lookup_status: $response.status
+```
+
+`$response.status` captures the actual status as an integer and does not
+require a JSON response body. Other `capture` values continue to use JSONPath.
+
+## Conditional Execution And Dependency Results
+
+Use `requires` to declare one or more prerequisite tests. Resty validates
+missing dependencies and cycles, then executes tests in topological order.
+
+Use `when` with a bounded expression when a step is optional:
+
+```yaml
+test: sensor_lookup
+get: $host/demo/devices/$sensor_ref
+expect:
+  status: [200, 404]
+capture:
+  sensor_lookup_status: $response.status
+```
+
+```yaml
+test: sensor_create
+requires: sensor_lookup
+when: ${{ sensor_lookup_status == 404 }}
+post: $host/demo/devices
+body:
+  label: DEMO-$sensor_ref
+expect:
+  status: 201
+```
+
+Rules:
+
+- `when` must resolve to a boolean. A non-boolean value or expression error
+  fails the test before any request is sent.
+- A false condition produces a conditional skip. That skip satisfies
+  downstream dependencies because the optional step completed as designed.
+- A failed required test produces a dependency-failure skip in each dependent.
+  Dependency-failure skips propagate transitively and do not satisfy later
+  dependencies.
+- A disabled required test does not satisfy downstream dependencies.
+- Skip classifications and explanations are retained in human-readable, JSON,
+  agent, HTML, and JUnit XML output.
+
+## Timing And Retry Policies
+
+`wait_before` delays once before the first request attempt. Its value must
+resolve to a non-negative duration:
+
+```yaml
+wait_before: ${{ seconds(2) }}
+```
+
+The historical scalar retry syntax remains supported:
+
+```yaml
+retry: 2
+```
+
+Scalar `retry: N` means one initial attempt plus `N` retries. It preserves the
+existing retryable statuses (`408`, `429`, `500`, `502`, `503`, and `504`),
+retryable network exceptions, one-second initial delay, exponential delay
+progression, and 30-second delay cap.
+
+Use a structured policy for deterministic workflow retries:
+
+```yaml
+retry:
+  attempts: 10
+  delay: ${{ milliseconds(500) }}
+  backoff: fixed
+  statuses: [404, 409, 500, 502, 503, 504]
+  expectation_failures: true
+```
+
+Structured fields:
+
+- `attempts`: total attempts including the first request; must be at least 1.
+- `delay`: non-negative duration between attempts; defaults to no delay.
+- `backoff`: currently only `fixed` is supported.
+- `statuses`: response statuses that can trigger another attempt. When omitted,
+  Resty uses the historical retryable status set.
+- `expectation_failures`: when true, failed header and JSON value expectations
+  can trigger another attempt; defaults to false.
+
+Configured status retries apply only when the response does not already satisfy
+`expect.status`. Retry and wait delays honor cancellation. Captures and
+`store_as` variables are returned to the suite only after a successful final
+attempt, so failed attempts cannot leak transient state.
 
 ## HTTP Mocking
 
@@ -258,7 +430,8 @@ mocks_files:
 
 ### Response Extraction
 
-- Always use JSONPath syntax starting with `$` for response extraction
+- Use `$response.status` to capture the integer HTTP response status.
+- Use JSONPath syntax starting with `$` for response-body extraction.
 - **Correct**: `token: $.result.token`
 - **Incorrect**: `token: result.token` or `token: auth.response.result.token`
 - Use descriptive variable names: `auth_token`, `user_id`, `api_status`
@@ -272,6 +445,8 @@ You can supply the body as either a raw string (JSON or otherwise) or as a struc
 - If Content-Type is application/json (or omitted), a structured body will be serialized to JSON.
 - If Content-Type is application/x-www-form-urlencoded and the body is a mapping, it will be URL-encoded as key=value&key2=value2.
 - Structured bodies with any other Content-Type are not allowed and will cause an error.
+- Exact `$variable` and `${{ expression }}` values retain their type before
+  JSON serialization. Form values are converted using invariant formatting.
 
 Examples:
 

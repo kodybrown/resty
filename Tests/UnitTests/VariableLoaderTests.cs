@@ -31,6 +31,34 @@ public class VariableLoaderTests
   }
 
   [Fact]
+  public void LoadIncludedVariables_ShouldPreserveUnquotedScalarTypes()
+  {
+    var tempDirectory = Path.Combine(
+      Path.GetTempPath(),
+      $"resty-typed-variables-{Guid.NewGuid():N}");
+    Directory.CreateDirectory(tempDirectory);
+    var variableFile = Path.Combine(tempDirectory, "typed.yaml");
+    File.WriteAllText(variableFile, """
+      variables:
+        count: 42
+        value: 1000.0
+        enabled: true
+      """);
+
+    try {
+      var variables = VariableLoader.LoadIncludedVariables(["typed.yaml"], tempDirectory);
+
+      Assert.IsNotType<string>(variables["count"]);
+      Assert.Equal(42, Convert.ToInt32(variables["count"]));
+      Assert.IsNotType<string>(variables["value"]);
+      Assert.Equal(1000.0, Convert.ToDouble(variables["value"]));
+      Assert.IsType<bool>(variables["enabled"]);
+    } finally {
+      Directory.Delete(tempDirectory, recursive: true);
+    }
+  }
+
+  [Fact]
   public void LoadIncludedVariables_ShouldHandleNestedIncludes()
   {
     // Arrange

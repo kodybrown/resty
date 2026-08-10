@@ -145,48 +145,14 @@ public class TestSuiteRunner
     }
 
     // Step 4: Execute tests in dependency-resolved order, maintaining variable state
-    foreach (var yamlBlock in resolvedBlocks) {
-      // Update variables from this block (if any)
-      if (yamlBlock.Variables != null) {
-        variableStore.UpdateFileVariables(yamlBlock.Variables);
-      }
-
-      // Execute test if this block defines one
-      if (yamlBlock.IsTest) {
-        // Find the original file and line number for this block
-        if (!blockSourceMap.TryGetValue(yamlBlock, out var src)) {
-          src = (testSuite.FilePath, 1);
-        }
-        var httpTest = HttpTest.FromYamlBlock(yamlBlock, src.FilePath, src.Line);
-        // Attach file-level mocks for this file
-        httpTest = httpTest with { FileMocks = fileMocks.ToList(), MockFiles = fileMockFiles.ToList() };
-
-        // Check if test is disabled
-        if (yamlBlock.Disabled) {
-          var variableSnapshot = variableStore.GetVariableSnapshot();
-          var skippedResult = TestResult.Skipped(httpTest, "Test is disabled", variableSnapshot);
-          results.Add(skippedResult);
-          continue;
-        }
-
-        // Execute the test with retry logic and timeout parameters
-        var result = await _executor.ExecuteTestAsync(
-          httpTest,
-          variableStore,
-          yamlBlock.Retry,
-          _optTimeout,
-          _optTimeoutWasSet,
-          cancellationToken);
-        results.Add(result);
-
-        // Capture response variables for successful tests
-        if (result.Passed && result.ExtractedVariables.Count > 0) {
-          variableStore.SetCapturedVariables(result.ExtractedVariables);
-        }
-      }
-    }
-
-    return results;
+    return await ExecuteResolvedBlocksAsync(
+      resolvedBlocks,
+      blockSourceMap,
+      testSuite.FilePath,
+      variableStore,
+      fileMocks,
+      fileMockFiles,
+      cancellationToken);
   }
 
   /// <summary>
@@ -317,48 +283,153 @@ public class TestSuiteRunner
     }
 
     // Step 4: Execute tests in dependency-resolved order
+    return await ExecuteResolvedBlocksAsync(
+      resolvedBlocks,
+      blockSourceMap,
+      filePath,
+      variableStore,
+      fileMocks,
+      fileMockFiles,
+      cancellationToken);
+  }
+
+  private async Task<List<TestResult>> ExecuteResolvedBlocksAsync(
+      IReadOnlyList<YamlBlock> resolvedBlocks,
+      Dictionary<YamlBlock, (string FilePath, int Line)> blockSourceMap,
+      string fallbackSourceFile,
+      VariableStore variableStore,
+      List<FileMockDefinition> fileMocks,
+      List<string> fileMockFiles,
+      CancellationToken cancellationToken )
+  {
+    var results = new List<TestResult>();
+    var resultsByName = new Dictionary<string, TestResult>(StringComparer.OrdinalIgnoreCase);
+
     foreach (var yamlBlock in resolvedBlocks) {
-      // Update variables from this block (if any)
       if (yamlBlock.Variables != null) {
         variableStore.UpdateFileVariables(yamlBlock.Variables);
       }
 
-      // Execute test if this block defines one
-      if (yamlBlock.IsTest) {
-        // Find the original file and line number for this block
-        if (!blockSourceMap.TryGetValue(yamlBlock, out var src)) {
-          src = (filePath, 1);
-        }
-        var httpTest = HttpTest.FromYamlBlock(yamlBlock, src.FilePath, src.Line);
-        // Attach file-level mocks for this file
-        httpTest = httpTest with { FileMocks = fileMocks.ToList(), MockFiles = fileMockFiles.ToList() };
+      if (!yamlBlock.IsTest) {
+        continue;
+      }
 
-        // Check if test is disabled
-        if (yamlBlock.Disabled) {
-          var variableSnapshot = variableStore.GetVariableSnapshot();
-          var skippedResult = TestResult.Skipped(httpTest, "Test is disabled", variableSnapshot);
-          results.Add(skippedResult);
+      if (!blockSourceMap.TryGetValue(yamlBlock, out var src)) {
+        src = (fallbackSourceFile, 1);
+      }
+
+      var httpTest = HttpTest.FromYamlBlock(yamlBlock, src.FilePath, src.Line) with {
+        FileMocks = fileMocks.ToList(),
+        MockFiles = fileMockFiles.ToList()
+      };
+
+      var unsatisfiedDependencies = (yamlBlock.Requires ?? [])
+        .Select(NormalizeDependencyName)
+        .Where(name => !string.IsNullOrWhiteSpace(name))
+        .Select(name => (
+          Name: name,
+          Result: resultsByName.GetValueOrDefault(name)))
+        .Where(dependency => dependency.Result == null || !SatisfiesDependency(dependency.Result))
+        .ToList();
+
+      if (unsatisfiedDependencies.Count > 0) {
+        var details = unsatisfiedDependencies.Select(dependency =>
+          dependency.Result == null
+            ? $"{dependency.Name} (no result)"
+            : $"{dependency.Name} ({DescribeDependencyResult(dependency.Result)})");
+        AddResult(TestResult.Skipped(
+          httpTest,
+          $"Required test did not satisfy dependency: {string.Join(", ", details)}",
+          variableStore.GetVariableSnapshot(),
+          TestSkipReason.DependencyFailed));
+        continue;
+      }
+
+      if (yamlBlock.Disabled) {
+        AddResult(TestResult.Skipped(
+          httpTest,
+          "Test is disabled",
+          variableStore.GetVariableSnapshot(),
+          TestSkipReason.Disabled));
+        continue;
+      }
+
+      if (yamlBlock.When != null) {
+        object? conditionValue;
+        try {
+          conditionValue = yamlBlock.When is string expression
+            ? variableStore.ResolveValue(expression)
+            : yamlBlock.When;
+        } catch (Exception ex) {
+          var now = DateTime.UtcNow;
+          AddResult(TestResult.Failure(
+            httpTest,
+            now,
+            now,
+            $"Failed to evaluate when condition: {ex.Message}",
+            ex,
+            variableSnapshot: variableStore.GetVariableSnapshot()));
           continue;
         }
 
-        // Execute the test with retry logic and timeout parameters
-        var result = await _executor.ExecuteTestAsync(
-          httpTest,
-          variableStore,
-          yamlBlock.Retry,
-          _optTimeout,
-          _optTimeoutWasSet,
-          cancellationToken);
-        results.Add(result);
-
-        // Capture response variables for successful tests
-        if (result.Passed && result.ExtractedVariables.Count > 0) {
-          variableStore.SetCapturedVariables(result.ExtractedVariables);
+        if (conditionValue is not bool shouldRun) {
+          var now = DateTime.UtcNow;
+          AddResult(TestResult.Failure(
+            httpTest,
+            now,
+            now,
+            $"when condition must evaluate to a boolean, but produced {conditionValue?.GetType().Name ?? "null"}.",
+            variableSnapshot: variableStore.GetVariableSnapshot()));
+          continue;
         }
+
+        if (!shouldRun) {
+          AddResult(TestResult.Skipped(
+            httpTest,
+            $"when condition evaluated to false: {VariableStore.FormatInvariant(yamlBlock.When)}",
+            variableStore.GetVariableSnapshot(),
+            TestSkipReason.ConditionFalse));
+          continue;
+        }
+      }
+
+      var result = await _executor.ExecuteTestAsync(
+        httpTest,
+        variableStore,
+        optTimeout: _optTimeout,
+        optTimeoutWasSet: _optTimeoutWasSet,
+        cancellationToken: cancellationToken);
+      AddResult(result);
+
+      if (result.Passed && result.ExtractedVariables.Count > 0) {
+        variableStore.SetCapturedVariables(result.ExtractedVariables);
       }
     }
 
     return results;
+
+    void AddResult( TestResult result )
+    {
+      results.Add(result);
+      resultsByName[result.Test.Name] = result;
+    }
+  }
+
+  private static bool SatisfiesDependency( TestResult result )
+  {
+    return result.Passed
+      || (result.Status == TestStatus.Skipped && result.SkipReason == TestSkipReason.ConditionFalse);
+  }
+
+  private static string DescribeDependencyResult( TestResult result )
+  {
+    return result.Status switch {
+      TestStatus.Failed => "failed",
+      TestStatus.Skipped when result.SkipReason == TestSkipReason.DependencyFailed => "dependency failed",
+      TestStatus.Skipped when result.SkipReason == TestSkipReason.Disabled => "disabled",
+      TestStatus.Skipped => "skipped",
+      _ => result.Status.ToString().ToLowerInvariant()
+    };
   }
 
   /// <summary>

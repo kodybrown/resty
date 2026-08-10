@@ -13,6 +13,9 @@ Use the [Resty.VSCode](https://github.com/kodybrown/resty-vscode) extension for 
 
 - ✅ **Human-Readable Test Format** - Write tests in markdown with embedded YAML
 - ✅ **Variable System** - Support for file variables, environment variables, and response capture
+- ✅ **Typed Expressions** - Safe UTC, duration, epoch, numeric, UUID, and random-value expressions
+- ✅ **Deterministic Workflows** - Status alternatives, conditions, and dependency-result gating
+- ✅ **Controlled Retries** - One-time waits, fixed retry delays, status policies, and eventual expectations
 - ✅ **Multiple Output Formats** - Console, JSON, JUnit XML, and Interactive HTML reports
 - ✅ **Test Organization** - Group tests by files and directories
 - ✅ **Filtering & Selection** - Run specific tests, patterns, or entire suites
@@ -305,6 +308,57 @@ get: $base_url/$api_version/users
 headers:
   authorization: Bearer $token
 ```
+
+Computed variables use a bounded expression language. Values are resolved
+lazily and cached for the suite run, so declaration order does not matter and
+generated values remain stable when reused:
+
+```yaml
+variables:
+  hour_end: ${{ start_of_hour(utc_now()) }}
+  hour_start: ${{ hour_end - hours(1) }}
+  read_time: ${{ hour_start + minutes(20) }}
+  epoch_seconds: ${{ unix_seconds(read_time) }}
+  epoch_milliseconds: ${{ epoch_seconds * 1000 }}
+  initial_value: 1000.0
+  next_value: ${{ initial_value + 1.25 }}
+  sensor_ref: ${{ random_hex(16) }}
+  deduplication_id: ${{ uuid() }}
+```
+
+Supported expression features:
+
+- Arithmetic: `+`, `-`, `*`, `/`, `%`, and parentheses.
+- Comparisons: `==`, `!=`, `<`, `<=`, `>`, and `>=`.
+- Boolean operators: `&&`, `||`, `!`, plus `and`, `or`, and `not`.
+- UTC and duration functions: `utc_now()`, `start_of_hour()`,
+  `milliseconds()`, `seconds()`, `minutes()`, `hours()`, and `days()`.
+- Conversion and formatting: `unix_seconds()`, `unix_milliseconds()`, and
+  `format(value, format)`.
+- Generators: `uuid()`, `random_int()`, `random_int(max)`,
+  `random_int(min, max)`, and `random_hex(length)`.
+
+Inside expressions, variables may be written as `name` or `$name`. Missing and
+cyclic references fail clearly. `utc_now()` uses one UTC snapshot per suite;
+this makes related time-window variables consistent.
+
+Exact scalar substitutions preserve their underlying type in structured
+bodies. Embedded substitutions remain strings and use invariant formatting:
+
+```yaml
+body:
+  epochSeconds: $epoch_seconds       # JSON number
+  enabled: $enabled                  # JSON boolean
+  value: ${{ initial_value + 1.25 }} # JSON number
+  label: READ-$sensor_ref        # String interpolation
+```
+
+Date/time values use round-trip `O` formatting when interpolated into URLs,
+headers, or other strings. URLs and headers always remain strings. Existing
+`$variable`, `$env:NAME`, and `$RandomNumber` syntax remains supported.
+
+See [the deterministic workflow design](docs/features/deterministic-api-workflows.md)
+for the full initiative and verification record.
 
 ### Environment Variables
 
@@ -774,7 +828,68 @@ resty test.rest -t update-profile
 
 - **Missing dependency**: Exit code 3 if a required test doesn't exist
 - **Circular dependency**: Exit code 4 if tests form a dependency loop
-- **Dependency failure**: If a dependency test fails, dependent tests are skipped
+- **Dependency failure**: A failed, disabled, or dependency-skipped required
+  test skips its dependents. The skip propagates through dependency chains.
+- **Conditional skip**: A test whose `when` condition is false is skipped and
+  still satisfies downstream dependencies because the optional step completed
+  as designed.
+
+### Conditional Workflows
+
+`expect.status` accepts one status or a list of acceptable statuses. Capture
+the actual integer status with `$response.status`, then use the same bounded
+expression syntax as variables in `when`:
+
+```yaml
+test: sensor-lookup
+get: $host/demo/devices/$sensor_ref
+expect:
+  status: [200, 404]
+capture:
+  sensor_lookup_status: $response.status
+```
+
+```yaml
+test: sensor-create
+requires: sensor-lookup
+when: ${{ sensor_lookup_status == 404 }}
+post: $host/demo/devices
+body:
+  label: DEMO-$sensor_ref
+expect:
+  status: 201
+```
+
+The `when` value must resolve to a boolean. Invalid conditions fail clearly
+without sending a request. Console, Markdown, HTML, JSON, agent, and JUnit XML
+outputs retain the skip explanation; structured outputs also distinguish
+conditional, dependency-failure, and disabled skips.
+
+### Timing And Retry Policies
+
+Use `wait_before` for a one-time delay before the first request. Structured
+retry policies use total `attempts`, a fixed delay, selected retryable statuses,
+and optional expectation retries:
+
+```yaml
+wait_before: ${{ seconds(2) }}
+retry:
+  attempts: 10
+  delay: ${{ milliseconds(500) }}
+  backoff: fixed
+  statuses: [404, 409, 500, 502, 503, 504]
+  expectation_failures: true
+```
+
+Both timing values must resolve to non-negative durations. `wait_before` runs
+once, while `retry.delay` runs between attempts and honors cancellation.
+`expectation_failures` covers response-header and JSON-value expectations.
+Captured variables are returned and committed only from the successful final
+attempt.
+
+The scalar form remains backward compatible: `retry: N` means one initial
+attempt plus `N` retries using the historical retryable status set and capped
+exponential delays.
 
 ### Recursive Directory Search
 

@@ -1,0 +1,59 @@
+# Typed Expression Examples
+
+This suite demonstrates deterministic UTC windows, numeric expressions,
+generators, typed structured bodies, and invariant URL interpolation. It is
+self-contained because every request uses an inline mock.
+
+```yaml
+variables:
+  hour_start: ${{ hour_end - hours(1) }}
+  hour_end: ${{ start_of_hour(utc_now()) }}
+  read_time: ${{ hour_start + minutes(20) }}
+  epoch_seconds: ${{ unix_seconds(read_time) }}
+  epoch_milliseconds: ${{ epoch_seconds * 1000 }}
+  initial_value: 1000.0
+  next_value: ${{ initial_value + 1.25 }}
+  sensor_ref: ${{ random_hex(16) }}
+  reading_id: ${{ uuid() }}
+```
+
+## Typed Structured Body
+
+```yaml
+test: typed-structured-body
+post: https://api.example.com/demo/telemetry
+body:
+  sensor:
+    reference: $sensor_ref
+  readingId: $reading_id
+  readTime: $read_time
+  epochSeconds: $epoch_seconds
+  epochMilliseconds: $epoch_milliseconds
+  enabled: true
+  measurement:
+    kilowattHours: $next_value
+mock_only: true
+mock:
+  status: 204
+expect:
+  status: 204
+```
+
+## Invariant URL Interpolation
+
+```yaml
+test: invariant-date-url
+get: https://api.example.com/demo/readings?start=$hour_start&end=${{ format(hour_end, 'O') }}
+mock_only: true
+mock:
+  status: 200
+  body:
+    result:
+      count: 1
+expect:
+  status: 200
+  values:
+    - key: $.result.count
+      op: equals
+      value: 1
+```

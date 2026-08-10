@@ -1,0 +1,175 @@
+# Spark Sensor And Uplink Workflow
+
+This live template uses a fictional sensor API. It provisions a synthetic
+sensor, posts two readings in the previous completed UTC hour, and checks the
+readings and their delta. The hourly-summary check is optional.
+
+See the README for the ignored demo configuration and how to run against a
+disposable test API.
+
+```yaml
+include:
+  - sensor-uplink-demo.private.yaml
+```
+
+```yaml
+variables:
+  demo_host: $env:RESTY_SPARK_DEMO_HOST
+  hour_end: ${{ start_of_hour(utc_now()) }}
+  hour_start: ${{ hour_end - hours(1) }}
+  first_read_time: ${{ hour_start + minutes(10) }}
+  second_read_time: ${{ hour_start + minutes(50) }}
+  first_kwh: 1000.0
+  expected_kwh_delta: 1.25
+  second_kwh: ${{ first_kwh + expected_kwh_delta }}
+  sensor_ref: ${{ random_hex(16) }}
+  first_reading_id: ${{ uuid() }}
+  second_reading_id: ${{ uuid() }}
+  verify_hourly_summary: false
+```
+
+## Discover Or Provision The Sensor
+
+```yaml
+test: spark-sensor-lookup
+get: $demo_host/demo/devices/$sensor_ref
+headers:
+  authorization: $demo_authorization
+expect:
+  status: [200, 404]
+capture:
+  sensor_lookup_status: $response.status
+```
+
+```yaml
+test: spark-sensor-create
+requires: spark-sensor-lookup
+when: ${{ sensor_lookup_status == 404 }}
+post: $demo_host/demo/devices
+headers:
+  authorization: $demo_authorization
+body:
+  label: DEMO-$sensor_ref
+  group: $demo_sensor_group
+  reference: $sensor_ref
+expect:
+  status: 201
+```
+
+```yaml
+test: spark-sensor-ready
+requires:
+  - spark-sensor-lookup
+  - spark-sensor-create
+get: $demo_host/demo/devices/$sensor_ref
+headers:
+  authorization: $demo_authorization
+expect:
+  status: 200
+capture:
+  sensor_id: $.fixture.id
+retry:
+  attempts: 8
+  delay: ${{ milliseconds(500) }}
+  backoff: fixed
+  statuses: [404, 409, 500, 502, 503, 504]
+```
+
+## Post Two Synthetic Readings
+
+```yaml
+test: spark-uplink-first
+requires: spark-sensor-ready
+post: $demo_host/demo/telemetry
+headers:
+  authorization: $demo_authorization
+body:
+  sensorId: $sensor_id
+  readingId: $first_reading_id
+  recordedAt: $first_read_time
+  kilowattHours: $first_kwh
+expect:
+  status: 204
+```
+
+```yaml
+test: spark-uplink-second
+requires: spark-uplink-first
+post: $demo_host/demo/telemetry
+headers:
+  authorization: $demo_authorization
+body:
+  sensorId: $sensor_id
+  readingId: $second_reading_id
+  recordedAt: $second_read_time
+  kilowattHours: $second_kwh
+expect:
+  status: 204
+```
+
+## Verify Raw Reads First
+
+```yaml
+test: spark-kwh-reads
+requires: spark-uplink-second
+get: $demo_host/demo/devices/$sensor_id/readings?from=$hour_start&until=$hour_end
+headers:
+  authorization: $demo_authorization
+expect:
+  status: 200
+  values:
+    - key: $.fixture.reads.length()
+      op: greater_than
+      value: 1
+retry:
+  attempts: 12
+  delay: ${{ seconds(1) }}
+  backoff: fixed
+  statuses: [404, 409, 500, 502, 503, 504]
+  expectation_failures: true
+```
+
+```yaml
+test: spark-kwh-delta
+requires: spark-kwh-reads
+get: $demo_host/demo/devices/$sensor_id/reading-delta?from=$hour_start&until=$hour_end
+headers:
+  authorization: $demo_authorization
+expect:
+  status: 200
+  values:
+    - key: $.fixture.delta
+      op: equals
+      value: $expected_kwh_delta
+retry:
+  attempts: 12
+  delay: ${{ seconds(1) }}
+  backoff: fixed
+  statuses: [404, 409, 500, 502, 503, 504]
+  expectation_failures: true
+```
+
+## Optionally Verify The Precomputed Hourly Summary
+
+Set `verify_hourly_summary` to `true` when the disposable API provides this endpoint.
+
+```yaml
+test: spark-hourly-kwh-delta
+requires: spark-kwh-delta
+when: ${{ verify_hourly_summary }}
+get: $demo_host/demo/devices/$sensor_id/hourly-summary?from=$hour_start&until=$hour_end
+headers:
+  authorization: $demo_authorization
+expect:
+  status: 200
+  values:
+    - key: $.fixture.delta
+      op: equals
+      value: $expected_kwh_delta
+retry:
+  attempts: 12
+  delay: ${{ seconds(5) }}
+  backoff: fixed
+  statuses: [404, 409, 500, 502, 503, 504]
+  expectation_failures: true
+```

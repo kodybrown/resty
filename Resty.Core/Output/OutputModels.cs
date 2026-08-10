@@ -65,6 +65,9 @@ public class JsonTestResult
   [JsonPropertyName("status")]
   public string Status { get; set; } = string.Empty;
 
+  [JsonPropertyName("skipReason")]
+  public string? SkipReason { get; set; }
+
   [JsonPropertyName("duration")]
   public double Duration { get; set; }
 
@@ -198,6 +201,9 @@ public class JUnitTestCase
   [XmlElement("failure")]
   public JUnitFailure? Failure { get; set; }
 
+  [XmlElement("skipped")]
+  public JUnitSkipped? Skipped { get; set; }
+
   [XmlElement("system-out")]
   public string? SystemOut { get; set; }
 
@@ -215,4 +221,10 @@ public class JUnitFailure
 
   [XmlText]
   public string Details { get; set; } = string.Empty;
+}
+
+public class JUnitSkipped
+{
+  [XmlAttribute("message")]
+  public string Message { get; set; } = string.Empty;
 }

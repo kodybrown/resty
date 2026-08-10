@@ -5,6 +5,10 @@ This folder contains example test files and output formats to demonstrate Resty'
 ## Test Files
 
 - **`api-tests.resty`** - Comprehensive example showing various HTTP methods, headers, response extraction, and variable usage
+- **`typed-expressions.resty`** - Typed UTC, duration, numeric, and generator expressions
+- **`conditional-workflow.resty`** - Status alternatives, response metadata capture, conditions, and dependency gating
+- **`retry-workflow.resty`** - One-time waits, configured status retries, and eventual expectations
+- **`spark/`** - Fictional sensor and uplink workflow with a mock suite and live template
 - **`sample-api.rest`** - Simple examples using the alternative `.rest` file extension
 
 ## Output Format Examples

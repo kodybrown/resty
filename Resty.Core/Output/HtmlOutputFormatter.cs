@@ -180,6 +180,12 @@ public class HtmlOutputFormatter : IOutputFormatter
           }
         }
 
+        if (result.Status == TestStatus.Skipped && !string.IsNullOrEmpty(result.ErrorMessage)) {
+          html.AppendLine($"                        <div class=\"test-error\">");
+          html.AppendLine($"                            <strong>Skipped:</strong> {EscapeHtml(result.ErrorMessage)}");
+          html.AppendLine($"                        </div>");
+        }
+
         if (result.StatusCode.HasValue) {
           var statusCodeClass = ((int)result.StatusCode.Value >= 200 && (int)result.StatusCode.Value < 300) ? "success" : "error";
           html.AppendLine($"                        <div class=\"status-code {statusCodeClass}\">");

@@ -36,6 +36,42 @@ More documentation.
   }
 
   [Fact]
+  public void FindYamlBlocks_ShouldPreserveUnquotedScalarTypes()
+  {
+    var markdown = """
+      # Typed scalars
+
+      ```yaml
+      variables:
+        count: 42
+        value: 1000.0
+        enabled: true
+
+      test: typed-body
+      post: https://api.example.com
+      body:
+        count: 42
+        value: 1000.0
+        enabled: true
+      ```
+      """;
+
+    var block = Assert.Single(MarkdownParser.FindYamlBlocks(markdown, "typed.resty")).Value;
+
+    Assert.IsNotType<string>(block.Variables!["count"]);
+    Assert.Equal(42, Convert.ToInt32(block.Variables["count"]));
+    Assert.IsNotType<string>(block.Variables["value"]);
+    Assert.Equal(1000.0, Convert.ToDouble(block.Variables["value"]));
+    Assert.IsType<bool>(block.Variables["enabled"]);
+    var body = Assert.IsAssignableFrom<IDictionary<object, object>>(block.Body);
+    Assert.IsNotType<string>(body["count"]);
+    Assert.Equal(42, Convert.ToInt32(body["count"]));
+    Assert.IsNotType<string>(body["value"]);
+    Assert.Equal(1000.0, Convert.ToDouble(body["value"]));
+    Assert.IsType<bool>(body["enabled"]);
+  }
+
+  [Fact]
   public void FindYamlBlocks_ShouldParseDependenciesInNonTestBlock()
   {
     // Arrange

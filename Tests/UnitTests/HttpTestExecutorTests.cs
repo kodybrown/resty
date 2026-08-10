@@ -4,6 +4,7 @@ using System.Net;
 using System.Text;
 using Moq;
 using Moq.Protected;
+using Newtonsoft.Json.Linq;
 using Resty.Core.Execution;
 using Resty.Core.Models;
 using Resty.Core.Variables;
@@ -33,8 +34,8 @@ public class HttpTestExecutorTests
         Status = 200,
         Values = new List<ValueExpectation> {
           new() { Key = "$.items.length()", Op = "equals", Value = 4 },
-          new() { Key = "$.items.length()", Op = "greater_than", Value = 2 },
-          new() { Key = "$.items.length()", Op = "less_than", Value = 10 }
+          new() { Key = "$.items.length()", Op = "greater_than", Value = (byte)2 },
+          new() { Key = "$.items.length()", Op = "less_than", Value = 10m }
         }
       }
     };
@@ -728,6 +729,95 @@ public class HttpTestExecutorTests
   }
 
   [Fact]
+  public async Task ExecuteTestAsync_ShouldPreserveTypedStructuredJsonSubstitutions()
+  {
+    var mockHandler = new Mock<HttpMessageHandler>();
+    HttpRequestMessage? capturedRequest = null;
+
+    mockHandler.Protected()
+      .Setup<Task<HttpResponseMessage>>(
+        "SendAsync",
+        ItExpr.IsAny<HttpRequestMessage>(),
+        ItExpr.IsAny<CancellationToken>())
+      .Callback<HttpRequestMessage, CancellationToken>(( request, _ ) => capturedRequest = request)
+      .ReturnsAsync(new HttpResponseMessage {
+        StatusCode = HttpStatusCode.OK,
+        Content = new StringContent("{}", Encoding.UTF8, "application/json")
+      });
+
+    var executor = new HttpTestExecutor(new HttpClient(mockHandler.Object));
+    var test = new HttpTest {
+      Name = "typed_structured_json_body",
+      Method = "POST",
+      Url = "https://api.example.com/measurements",
+      ContentType = "application/json",
+      RawBody = new Dictionary<string, object?> {
+        ["count"] = "$count",
+        ["enabled"] = "$enabled",
+        ["nextValue"] = "${{ initial_value + 1.25 }}",
+        ["nested"] = new Dictionary<string, object?> {
+          ["epoch"] = "${{ unix_seconds(read_time) }}"
+        }
+      }
+    };
+
+    var store = new VariableStore();
+    store.UpdateFileVariables(new Dictionary<string, object> {
+      ["count"] = 3,
+      ["enabled"] = true,
+      ["initial_value"] = 1000.0,
+      ["read_time"] = new DateTimeOffset(2026, 8, 10, 13, 20, 0, TimeSpan.Zero)
+    });
+
+    var result = await executor.ExecuteTestAsync(test, store);
+
+    Assert.True(result.Passed);
+    Assert.NotNull(capturedRequest);
+    var sent = await capturedRequest!.Content!.ReadAsStringAsync();
+    var json = JObject.Parse(sent);
+    Assert.Equal(JTokenType.Integer, json["count"]!.Type);
+    Assert.Equal(3, json["count"]!.Value<int>());
+    Assert.Equal(JTokenType.Boolean, json["enabled"]!.Type);
+    Assert.True(json["enabled"]!.Value<bool>());
+    Assert.Equal(JTokenType.Float, json["nextValue"]!.Type);
+    Assert.Equal(1001.25m, json["nextValue"]!.Value<decimal>());
+    Assert.Equal(JTokenType.Integer, json["nested"]!["epoch"]!.Type);
+  }
+
+  [Fact]
+  public async Task ExecuteTestAsync_ShouldFormatDateTimeVariablesInUrlsAsRoundTripUtc()
+  {
+    var mockHandler = new Mock<HttpMessageHandler>();
+    mockHandler.Protected()
+      .Setup<Task<HttpResponseMessage>>(
+        "SendAsync",
+        ItExpr.IsAny<HttpRequestMessage>(),
+        ItExpr.IsAny<CancellationToken>())
+      .ReturnsAsync(new HttpResponseMessage {
+        StatusCode = HttpStatusCode.OK,
+        Content = new StringContent("{}", Encoding.UTF8, "application/json")
+      });
+
+    var executor = new HttpTestExecutor(new HttpClient(mockHandler.Object));
+    var test = new HttpTest {
+      Name = "date_url",
+      Method = "GET",
+      Url = "https://api.example.com/measurements?start=$window_start"
+    };
+    var store = new VariableStore();
+    store.UpdateFileVariables(new Dictionary<string, object> {
+      ["window_start"] = new DateTimeOffset(2026, 8, 10, 13, 0, 0, TimeSpan.Zero)
+    });
+
+    var result = await executor.ExecuteTestAsync(test, store);
+
+    Assert.True(result.Passed);
+    Assert.Equal(
+      "https://api.example.com/measurements?start=2026-08-10T13:00:00.0000000+00:00",
+      result.RequestInfo!.Url);
+  }
+
+  [Fact]
   public async Task ExecuteTestAsync_ShouldSerializeStructuredFormBody()
   {
     // Arrange
@@ -1109,6 +1199,68 @@ public class HttpTestExecutorTests
     Assert.Equal(HttpStatusCode.NotFound, result.StatusCode);
     Assert.Single(result.ExtractedVariables);
     Assert.Equal("not found", result.ExtractedVariables["error_msg"]);
+  }
+
+  [Fact]
+  public async Task ExecuteTestAsync_ShouldPassWhenResponseMatchesAnyExpectedStatus()
+  {
+    var mockHandler = new Mock<HttpMessageHandler>();
+    mockHandler.Protected()
+      .Setup<Task<HttpResponseMessage>>(
+        "SendAsync",
+        ItExpr.IsAny<HttpRequestMessage>(),
+        ItExpr.IsAny<CancellationToken>())
+      .ReturnsAsync(new HttpResponseMessage {
+        StatusCode = HttpStatusCode.NotFound,
+        ReasonPhrase = "Not Found",
+        Content = new StringContent(string.Empty)
+      });
+
+    var executor = new HttpTestExecutor(new HttpClient(mockHandler.Object));
+    var test = new HttpTest {
+      Name = "test_expected_status_list",
+      Method = "GET",
+      Url = "https://api.example.com/missing",
+      Expect = new ExpectDefinition {
+        Status = new ExpectedStatusCodes(new[] { 200, 404 })
+      }
+    };
+
+    var result = await executor.ExecuteTestAsync(test, new VariableStore());
+
+    Assert.True(result.Passed);
+    Assert.Equal(HttpStatusCode.NotFound, result.StatusCode);
+  }
+
+  [Fact]
+  public async Task ExecuteTestAsync_ShouldCaptureResponseStatusWithoutJsonBody()
+  {
+    var mockHandler = new Mock<HttpMessageHandler>();
+    mockHandler.Protected()
+      .Setup<Task<HttpResponseMessage>>(
+        "SendAsync",
+        ItExpr.IsAny<HttpRequestMessage>(),
+        ItExpr.IsAny<CancellationToken>())
+      .ReturnsAsync(new HttpResponseMessage {
+        StatusCode = HttpStatusCode.OK,
+        Content = new StringContent(string.Empty)
+      });
+
+    var executor = new HttpTestExecutor(new HttpClient(mockHandler.Object));
+    var test = new HttpTest {
+      Name = "capture_response_status",
+      Method = "GET",
+      Url = "https://api.example.com/status",
+      ExpectedStatus = 200,
+      Extractors = new Dictionary<string, string> {
+        ["captured_status"] = "$response.status"
+      }
+    };
+
+    var result = await executor.ExecuteTestAsync(test, new VariableStore());
+
+    Assert.True(result.Passed);
+    Assert.Equal(200, Assert.IsType<int>(result.ExtractedVariables["captured_status"]));
   }
 
   [Fact]

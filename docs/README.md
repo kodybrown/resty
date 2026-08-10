@@ -8,6 +8,11 @@ This directory contains Resty's curated documentation.
 - [Documentation Structure](DOCUMENTATION.md): documentation organization and
   source-of-truth policy.
 
+## Feature Documentation
+
+- [Deterministic API Workflows](features/deterministic-api-workflows.md): typed
+  expressions, workflow slices, compatibility requirements, and remaining work.
+
 Add project-specific design, development, plan, feature, and operational
 documents here. Remove links for documents the project does not use.
 

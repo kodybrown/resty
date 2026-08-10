@@ -1,9 +1,10 @@
 namespace Resty.Core.Variables;
 
+using System.Globalization;
 using System.Text.RegularExpressions;
 
 /// <summary>
-/// Manages variable storage, precedence, and resolution for test execution.
+/// Manages typed variable storage, precedence, expression evaluation, and substitution.
 /// Maintains state throughout the execution of a test suite.
 /// </summary>
 public class VariableStore
@@ -11,13 +12,41 @@ public class VariableStore
   private readonly Dictionary<string, object> _capturedVariables = new();
   private readonly Dictionary<string, object> _fileVariables = new();
   private readonly Dictionary<string, object> _includedVariables = new();
+  private readonly Dictionary<string, object> _resolvedVariables = new();
+  private readonly Dictionary<string, HashSet<string>> _variableDependencies = new();
+  private readonly DateTimeOffset _utcNow;
+  private readonly ExpressionEvaluator _expressionEvaluator;
 
-  // Regex patterns for variable substitution
-  private static readonly Regex VariablePattern = new(@"\$([a-zA-Z_][a-zA-Z0-9_]*)", RegexOptions.Compiled);
-  private static readonly Regex EnvVariablePattern = new(@"\$env:([a-zA-Z_][a-zA-Z0-9_]*)", RegexOptions.Compiled);
+  private static readonly Regex VariablePattern = new(
+    @"\$([a-zA-Z_][a-zA-Z0-9_]*)",
+    RegexOptions.Compiled);
+  private static readonly Regex ExactVariablePattern = new(
+    @"^\$([a-zA-Z_][a-zA-Z0-9_]*)$",
+    RegexOptions.Compiled);
+  private static readonly Regex EnvVariablePattern = new(
+    @"\$env:([a-zA-Z_][a-zA-Z0-9_]*)",
+    RegexOptions.Compiled);
+  private static readonly Regex ExactEnvVariablePattern = new(
+    @"^\$env:([a-zA-Z_][a-zA-Z0-9_]*)$",
+    RegexOptions.Compiled);
+  private static readonly Regex ExpressionPattern = new(
+    @"\$\{\{\s*(.*?)\s*\}\}",
+    RegexOptions.Compiled | RegexOptions.Singleline);
+  private static readonly Regex ExactExpressionPattern = new(
+    @"^\$\{\{\s*(.*?)\s*\}\}$",
+    RegexOptions.Compiled | RegexOptions.Singleline);
 
-  // Builtin random number generator (shared across all tests)
+  // Preserve the existing $RandomNumber behavior for backward compatibility.
   private static readonly Random _randomGenerator = new();
+
+  public VariableStore( TimeProvider? timeProvider = null )
+    : this((timeProvider ?? TimeProvider.System).GetUtcNow()) { }
+
+  private VariableStore( DateTimeOffset utcNow )
+  {
+    _utcNow = utcNow.ToUniversalTime();
+    _expressionEvaluator = new ExpressionEvaluator(_utcNow);
+  }
 
   /// <summary>
   /// Gets all variable names currently available.
@@ -40,126 +69,98 @@ public class VariableStore
   /// <summary>
   /// Sets variables from included files (lowest precedence).
   /// </summary>
-  /// <param name="variables">Variables from included YAML files.</param>
   public void SetIncludedVariables( Dictionary<string, object> variables )
   {
     _includedVariables.Clear();
     foreach (var (key, value) in variables) {
       _includedVariables[key] = value;
     }
+    _resolvedVariables.Clear();
+    _variableDependencies.Clear();
   }
 
   /// <summary>
   /// Updates file-level variables (middle precedence).
-  /// These accumulate as we process YAML blocks in the test file.
   /// </summary>
-  /// <param name="variables">Variables from the current YAML block.</param>
   public void UpdateFileVariables( Dictionary<string, object> variables )
   {
     foreach (var (key, value) in variables) {
       _fileVariables[key] = value;
     }
+    InvalidateVariables(variables.Keys);
   }
 
   /// <summary>
   /// Sets captured variables from test responses (highest precedence).
   /// </summary>
-  /// <param name="variables">Variables captured from HTTP responses.</param>
   public void SetCapturedVariables( Dictionary<string, object> variables )
   {
     foreach (var (key, value) in variables) {
       _capturedVariables[key] = value;
     }
+    InvalidateVariables(variables.Keys);
   }
 
   /// <summary>
-  /// Gets a variable value following the precedence order:
-  /// 1. Captured variables (highest)
-  /// 2. File variables
-  /// 3. Included variables
-  /// 4. Environment variables (lowest)
+  /// Gets a typed variable value following Resty's existing precedence order.
+  /// Computed variables are evaluated lazily, cached, and cycle checked.
   /// </summary>
-  /// <param name="name">Variable name to look up.</param>
-  /// <returns>Variable value or null if not found.</returns>
   public object? GetVariable( string name )
   {
-    // Check captured variables first (highest precedence)
-    if (_capturedVariables.TryGetValue(name, out var captured)) {
-      return captured;
-    }
-
-    // Check file variables second
-    if (_fileVariables.TryGetValue(name, out var fileVar)) {
-      return fileVar;
-    }
-
-    // Check included variables third
-    if (_includedVariables.TryGetValue(name, out var included)) {
-      return included;
-    }
-
-    // Check environment variables last (lowest precedence)
-    var envValue = Environment.GetEnvironmentVariable(name);
-    if (envValue != null) {
-      return envValue;
-    }
-
-    return null;
+    return ResolveVariable(name, new Stack<string>());
   }
 
   /// <summary>
-  /// Resolves all variables in the given text using $variable, $env:VARIABLE, and $RandomNumber syntax.
+  /// Evaluates a bounded Resty expression and returns its typed result.
   /// </summary>
-  /// <param name="text">Text containing variable references.</param>
-  /// <returns>Text with all variables resolved.</returns>
-  /// <exception cref="VariableNotFoundException">Thrown when a variable cannot be resolved.</exception>
+  public object EvaluateExpression( string expression )
+  {
+    var resolutionStack = new Stack<string>();
+    return _expressionEvaluator.Evaluate(
+      expression,
+      name => ResolveVariable(name, resolutionStack));
+  }
+
+  /// <summary>
+  /// Resolves a scalar value. Exact variable and expression scalars preserve their type;
+  /// larger strings are interpolated using invariant formatting.
+  /// </summary>
+  public object ResolveValue( string value )
+  {
+    return ResolveValue(value, new Stack<string>());
+  }
+
+  /// <summary>
+  /// Resolves all variables and expressions in text using invariant formatting.
+  /// </summary>
   public string ResolveVariables( string? text )
   {
     if (string.IsNullOrEmpty(text)) {
       return string.Empty;
     }
+    return ResolveString(text, new Stack<string>());
+  }
 
-    var result = text;
-
-    // Handle builtin $RandomNumber first
-    result = Regex.Replace(result, @"\$RandomNumber", match => _randomGenerator.Next(10000, 99999).ToString());
-
-    // First, resolve environment variables ($env:VAR_NAME)
-    result = EnvVariablePattern.Replace(result, match =>
-    {
-      var varName = match.Groups[1].Value;
-      var envValue = Environment.GetEnvironmentVariable(varName);
-      if (envValue == null) {
-        throw new VariableNotFoundException($"Environment variable '{varName}' not found");
-      }
-      return envValue;
-    });
-
-    // Then resolve regular variables ($variable_name)
-    result = VariablePattern.Replace(result, match =>
-    {
-      var varName = match.Groups[1].Value;
-
-      // Skip if this looks like an environment variable (already processed)
-      if (text.Contains($"$env:{varName}")) {
-        return match.Value;
-      }
-
-      var value = GetVariable(varName);
-      if (value == null) {
-        throw new VariableNotFoundException($"Variable '{varName}' not found. Available variables: {string.Join(", ", AllVariableNames)}");
-      }
-
-      return value.ToString() ?? string.Empty;
-    });
-
-    return result;
+  /// <summary>
+  /// Formats a typed value for use inside URLs, headers, raw bodies, and other strings.
+  /// </summary>
+  public static string FormatInvariant( object? value )
+  {
+    return value switch {
+      null => string.Empty,
+      bool boolean => boolean ? "true" : "false",
+      DateTimeOffset dateTime => dateTime.ToUniversalTime().ToString("O", CultureInfo.InvariantCulture),
+      DateTime dateTime => FormatDateTime(dateTime),
+      TimeSpan duration => duration.ToString("c", CultureInfo.InvariantCulture),
+      Guid guid => guid.ToString("D"),
+      IFormattable formattable => formattable.ToString(null, CultureInfo.InvariantCulture),
+      _ => value.ToString() ?? string.Empty
+    };
   }
 
   /// <summary>
   /// Creates a snapshot of the current variable state for debugging.
   /// </summary>
-  /// <returns>Dictionary containing all variables with their sources.</returns>
   public Dictionary<string, (object Value, string Source)> GetVariableSnapshot()
   {
     var snapshot = new Dictionary<string, (object Value, string Source)>();
@@ -167,11 +168,9 @@ public class VariableStore
     foreach (var (key, value) in _includedVariables) {
       snapshot[key] = (value, "Included");
     }
-
     foreach (var (key, value) in _fileVariables) {
       snapshot[key] = (value, "File");
     }
-
     foreach (var (key, value) in _capturedVariables) {
       snapshot[key] = (value, "Captured");
     }
@@ -180,44 +179,217 @@ public class VariableStore
   }
 
   /// <summary>
-  /// Clears all variables (useful for testing).
+  /// Clears all variables.
   /// </summary>
   public void Clear()
   {
     _capturedVariables.Clear();
     _fileVariables.Clear();
     _includedVariables.Clear();
+    _resolvedVariables.Clear();
+    _variableDependencies.Clear();
   }
 
   /// <summary>
-  /// Creates a copy of the current variable store.
+  /// Creates an independent copy with the same variables, cached values, and UTC clock snapshot.
   /// </summary>
-  /// <returns>A new VariableStore with the same variable state.</returns>
   public VariableStore Clone()
   {
-    var clone = new VariableStore();
+    var clone = new VariableStore(_utcNow);
 
     foreach (var (key, value) in _includedVariables) {
       clone._includedVariables[key] = value;
     }
-
     foreach (var (key, value) in _fileVariables) {
       clone._fileVariables[key] = value;
     }
-
     foreach (var (key, value) in _capturedVariables) {
       clone._capturedVariables[key] = value;
+    }
+    foreach (var (key, value) in _resolvedVariables) {
+      clone._resolvedVariables[key] = value;
+    }
+    foreach (var (key, dependencies) in _variableDependencies) {
+      clone._variableDependencies[key] = new HashSet<string>(dependencies, StringComparer.OrdinalIgnoreCase);
     }
 
     return clone;
   }
+
+  private object? ResolveVariable( string name, Stack<string> resolutionStack )
+  {
+    if (resolutionStack.TryPeek(out var dependentName)
+      && !string.Equals(dependentName, name, StringComparison.OrdinalIgnoreCase)) {
+      if (!_variableDependencies.TryGetValue(dependentName, out var dependencies)) {
+        dependencies = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        _variableDependencies[dependentName] = dependencies;
+      }
+      dependencies.Add(name);
+    }
+
+    if (_resolvedVariables.TryGetValue(name, out var resolved)) {
+      return resolved;
+    }
+
+    if (resolutionStack.Contains(name, StringComparer.OrdinalIgnoreCase)) {
+      var cycle = resolutionStack.Reverse().Concat([name]);
+      throw new VariableResolutionException(
+        $"Cyclic variable reference detected: {string.Join(" -> ", cycle)}");
+    }
+
+    if (!TryGetStoredVariable(name, out var rawValue)) {
+      return Environment.GetEnvironmentVariable(name);
+    }
+
+    resolutionStack.Push(name);
+    try {
+      _variableDependencies.Remove(name);
+      var value = rawValue is string text
+        ? ResolveValue(text, resolutionStack)
+        : rawValue;
+      _resolvedVariables[name] = value;
+      return value;
+    } finally {
+      resolutionStack.Pop();
+    }
+  }
+
+  private void InvalidateVariables( IEnumerable<string> changedNames )
+  {
+    var pending = new Queue<string>(changedNames);
+    var invalidated = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+    while (pending.Count > 0) {
+      var changedName = pending.Dequeue();
+      if (!invalidated.Add(changedName)) {
+        continue;
+      }
+
+      _resolvedVariables.Remove(changedName);
+      foreach (var (variableName, dependencies) in _variableDependencies) {
+        if (dependencies.Contains(changedName)) {
+          pending.Enqueue(variableName);
+        }
+      }
+    }
+
+    foreach (var variableName in invalidated) {
+      _variableDependencies.Remove(variableName);
+    }
+  }
+
+  private bool TryGetStoredVariable( string name, out object value )
+  {
+    if (_capturedVariables.TryGetValue(name, out value!)) {
+      return true;
+    }
+    if (_fileVariables.TryGetValue(name, out value!)) {
+      return true;
+    }
+    if (_includedVariables.TryGetValue(name, out value!)) {
+      return true;
+    }
+
+    value = null!;
+    return false;
+  }
+
+  private object ResolveValue( string value, Stack<string> resolutionStack )
+  {
+    var expressionMatch = ExactExpressionPattern.Match(value);
+    if (expressionMatch.Success) {
+      return EvaluateExpression(expressionMatch.Groups[1].Value, resolutionStack);
+    }
+
+    if (string.Equals(value, "$RandomNumber", StringComparison.Ordinal)) {
+      return NextRandomNumber();
+    }
+
+    var environmentMatch = ExactEnvVariablePattern.Match(value);
+    if (environmentMatch.Success) {
+      return ResolveEnvironmentVariable(environmentMatch.Groups[1].Value);
+    }
+
+    var variableMatch = ExactVariablePattern.Match(value);
+    if (variableMatch.Success) {
+      var variableName = variableMatch.Groups[1].Value;
+      return ResolveVariable(variableName, resolutionStack)
+        ?? throw CreateVariableNotFoundException(variableName);
+    }
+
+    return ResolveString(value, resolutionStack);
+  }
+
+  private object EvaluateExpression( string expression, Stack<string> resolutionStack )
+  {
+    return _expressionEvaluator.Evaluate(
+      expression,
+      name => ResolveVariable(name, resolutionStack));
+  }
+
+  private string ResolveString( string text, Stack<string> resolutionStack )
+  {
+    var result = ExpressionPattern.Replace(text, match =>
+      FormatInvariant(EvaluateExpression(match.Groups[1].Value, resolutionStack)));
+
+    result = Regex.Replace(result, @"\$RandomNumber", _ => NextRandomNumber());
+
+    result = EnvVariablePattern.Replace(result, match =>
+      ResolveEnvironmentVariable(match.Groups[1].Value));
+
+    result = VariablePattern.Replace(result, match =>
+    {
+      var variableName = match.Groups[1].Value;
+      var value = ResolveVariable(variableName, resolutionStack)
+        ?? throw CreateVariableNotFoundException(variableName);
+      return FormatInvariant(value);
+    });
+
+    return result;
+  }
+
+  private static string ResolveEnvironmentVariable( string name )
+  {
+    return Environment.GetEnvironmentVariable(name)
+      ?? throw new VariableNotFoundException($"Environment variable '{name}' not found");
+  }
+
+  private static string NextRandomNumber()
+  {
+    return _randomGenerator.Next(10000, 99999).ToString(CultureInfo.InvariantCulture);
+  }
+
+  private VariableNotFoundException CreateVariableNotFoundException( string name )
+  {
+    return new VariableNotFoundException(
+      $"Variable '{name}' not found. Available variables: {string.Join(", ", AllVariableNames)}");
+  }
+
+  private static string FormatDateTime( DateTime dateTime )
+  {
+    var utc = dateTime.Kind switch {
+      DateTimeKind.Utc => dateTime,
+      DateTimeKind.Local => dateTime.ToUniversalTime(),
+      _ => DateTime.SpecifyKind(dateTime, DateTimeKind.Utc)
+    };
+    return utc.ToString("O", CultureInfo.InvariantCulture);
+  }
 }
 
 /// <summary>
-/// Exception thrown when a variable cannot be resolved.
+/// Thrown when a variable cannot be found.
 /// </summary>
 public class VariableNotFoundException : Exception
 {
   public VariableNotFoundException( string message ) : base(message) { }
   public VariableNotFoundException( string message, Exception innerException ) : base(message, innerException) { }
+}
+
+/// <summary>
+/// Thrown when variable dependencies cannot be resolved.
+/// </summary>
+public class VariableResolutionException : Exception
+{
+  public VariableResolutionException( string message ) : base(message) { }
+  public VariableResolutionException( string message, Exception innerException ) : base(message, innerException) { }
 }

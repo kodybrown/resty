@@ -1,0 +1,66 @@
+# Conditional Workflow Example
+
+This self-contained suite looks up a sensor, accepts either an existing or
+missing result, captures the integer response status, conditionally creates the
+sensor, and then verifies readiness. Change the lookup mock status from `404`
+to `200` to see `sensor-create` skip while `sensor-ready` still runs.
+
+```yaml
+variables:
+  host: https://api.example.com
+  sensor_ref: ${{ random_hex(16) }}
+```
+
+## Look Up The Sensor
+
+```yaml
+test: sensor-lookup
+get: $host/demo/devices/$sensor_ref
+mock_only: true
+mock:
+  status: 404
+expect:
+  status: [200, 404]
+capture:
+  sensor_lookup_status: $response.status
+```
+
+## Create Only When Missing
+
+```yaml
+test: sensor-create
+requires: sensor-lookup
+when: ${{ sensor_lookup_status == 404 }}
+post: $host/demo/devices
+body:
+  label: DEMO-$sensor_ref
+  reference: $sensor_ref
+mock_only: true
+mock:
+  status: 201
+  body:
+    created: true
+expect:
+  status: 201
+```
+
+## Continue After Create Or Conditional Skip
+
+```yaml
+test: sensor-ready
+requires:
+  - sensor-lookup
+  - sensor-create
+get: $host/demo/devices/$sensor_ref/status
+mock_only: true
+mock:
+  status: 200
+  body:
+    ready: true
+expect:
+  status: 200
+  values:
+    - key: $.ready
+      op: equals
+      value: true
+```

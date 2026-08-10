@@ -68,9 +68,19 @@ public record HttpTest
   /// default success semantics (2xx) are used.
   /// </summary>
   public int? ExpectedStatus {
-    get => Expect?.Status;
-    init => Expect ??= new() { Status = value };
+    get => Expect?.Status?.Codes.Count == 1 ? Expect.Status.Codes[0] : null;
+    init {
+      if (value.HasValue) {
+        Expect = (Expect ?? new ExpectDefinition()) with { Status = value.Value };
+      }
+    }
   }
+
+  /// <summary>
+  /// Acceptable HTTP status codes for this test. When null, default success
+  /// semantics (2xx) are used.
+  /// </summary>
+  public IReadOnlyList<int>? ExpectedStatuses => Expect?.Status?.Codes;
 
   /// <summary>
   /// File path where this test was defined (for error reporting).
@@ -86,6 +96,16 @@ public record HttpTest
   /// HTTP request timeout in seconds for this test. If null, uses default timeout.
   /// </summary>
   public int? Timeout { get; init; }
+
+  /// <summary>
+  /// Delay applied once before the first request attempt.
+  /// </summary>
+  public object? WaitBefore { get; init; }
+
+  /// <summary>
+  /// Retry policy for this test.
+  /// </summary>
+  public RetryPolicyDefinition? Retry { get; init; }
 
   // Mocking
   //
@@ -150,6 +170,8 @@ public record HttpTest
       SourceFile = sourceFile,
       SourceLine = sourceLine,
       Timeout = block.Timeout,
+      WaitBefore = block.WaitBefore,
+      Retry = block.Retry,
       MockOnly = block.MockOnly,
       InlineMock = block.Mock
     };

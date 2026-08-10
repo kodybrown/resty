@@ -1,0 +1,187 @@
+# Spark Sensor And Uplink Workflow - Self-Contained Mock
+
+This suite exercises the fictional sensor workflow through inline mocks. It
+covers conditional provisioning, typed values, and retries for readings and
+summaries.
+
+```yaml
+variables:
+  host: https://spark.example.com
+  sensor_group: demo-group
+  hour_end: ${{ start_of_hour(utc_now()) }}
+  hour_start: ${{ hour_end - hours(1) }}
+  first_read_time: ${{ hour_start + minutes(10) }}
+  second_read_time: ${{ hour_start + minutes(50) }}
+  first_kwh: 1000.0
+  expected_kwh_delta: 1.25
+  second_kwh: ${{ first_kwh + expected_kwh_delta }}
+  sensor_ref: ${{ random_hex(16) }}
+  first_reading_id: ${{ uuid() }}
+  second_reading_id: ${{ uuid() }}
+```
+
+```yaml
+test: spark-sensor-lookup
+get: $host/demo/devices/$sensor_ref
+mock_only: true
+mock:
+  status: 404
+expect:
+  status: [200, 404]
+capture:
+  sensor_lookup_status: $response.status
+```
+
+```yaml
+test: spark-sensor-create
+requires: spark-sensor-lookup
+when: ${{ sensor_lookup_status == 404 }}
+post: $host/demo/devices
+body:
+  label: DEMO-$sensor_ref
+  group: $sensor_group
+  reference: $sensor_ref
+mock_only: true
+mock:
+  status: 201
+  body:
+    fixture:
+      id: demo-sensor
+expect:
+  status: 201
+```
+
+```yaml
+test: spark-sensor-ready
+requires:
+  - spark-sensor-lookup
+  - spark-sensor-create
+get: $host/demo/devices/$sensor_ref
+mock_only: true
+mock:
+  sequence:
+    - status: 404
+    - status: 200
+      body:
+        fixture:
+          id: demo-sensor
+expect:
+  status: 200
+capture:
+  sensor_id: $.fixture.id
+retry:
+  attempts: 2
+  delay: ${{ milliseconds(5) }}
+  backoff: fixed
+  statuses: [404]
+```
+
+```yaml
+test: spark-uplink-first
+requires: spark-sensor-ready
+post: $host/demo/telemetry
+body:
+  sensorId: $sensor_id
+  readingId: $first_reading_id
+  recordedAt: $first_read_time
+  kilowattHours: $first_kwh
+mock_only: true
+mock:
+  status: 204
+expect:
+  status: 204
+```
+
+```yaml
+test: spark-uplink-second
+requires: spark-uplink-first
+post: $host/demo/telemetry
+body:
+  sensorId: $sensor_id
+  readingId: $second_reading_id
+  recordedAt: $second_read_time
+  kilowattHours: $second_kwh
+mock_only: true
+mock:
+  status: 204
+expect:
+  status: 204
+```
+
+```yaml
+test: spark-kwh-reads
+requires: spark-uplink-second
+get: $host/demo/devices/$sensor_id/readings?from=$hour_start&until=$hour_end
+mock_only: true
+mock:
+  sequence:
+    - status: 200
+      body:
+        fixture:
+          reads: []
+    - status: 200
+      body:
+        fixture:
+          reads:
+            - recordedAt: $first_read_time
+              kilowattHours: $first_kwh
+            - recordedAt: $second_read_time
+              kilowattHours: $second_kwh
+expect:
+  status: 200
+  values:
+    - key: $.fixture.reads.length()
+      op: greater_than
+      value: 1
+retry:
+  attempts: 2
+  delay: ${{ milliseconds(5) }}
+  backoff: fixed
+  expectation_failures: true
+```
+
+```yaml
+test: spark-kwh-delta
+requires: spark-kwh-reads
+get: $host/demo/devices/$sensor_id/reading-delta?from=$hour_start&until=$hour_end
+mock_only: true
+mock:
+  status: 200
+  body:
+    fixture:
+      delta: $expected_kwh_delta
+expect:
+  status: 200
+  values:
+    - key: $.fixture.delta
+      op: equals
+      value: $expected_kwh_delta
+```
+
+```yaml
+test: spark-hourly-kwh-delta
+requires: spark-kwh-delta
+get: $host/demo/devices/$sensor_id/hourly-summary?from=$hour_start&until=$hour_end
+mock_only: true
+mock:
+  sequence:
+    - status: 409
+      body:
+        error: hourly-summary-not-ready
+    - status: 200
+      body:
+        fixture:
+          delta: $expected_kwh_delta
+expect:
+  status: 200
+  values:
+    - key: $.fixture.delta
+      op: equals
+      value: $expected_kwh_delta
+retry:
+  attempts: 2
+  delay: ${{ milliseconds(5) }}
+  backoff: fixed
+  statuses: [409]
+  expectation_failures: true
+```

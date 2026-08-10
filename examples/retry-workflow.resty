@@ -1,0 +1,56 @@
+# Timing And Retry Workflow Example
+
+This self-contained suite demonstrates a one-time pre-request wait, a configured
+status retry, an expectation-aware retry, and capture from only the successful
+final attempt.
+
+## Poll An Eventually Consistent Resource
+
+```yaml
+test: eventually-ready
+get: https://api.example.com/resources/current
+wait_before: ${{ milliseconds(5) }}
+mock_only: true
+mock:
+  sequence:
+    - status: 404
+      body:
+        error: not-ready
+    - status: 200
+      body:
+        ready: false
+        resourceId: transient-attempt
+    - status: 200
+      body:
+        ready: true
+        resourceId: final-resource
+expect:
+  status: 200
+  values:
+    - key: $.ready
+      op: equals
+      value: true
+capture:
+  resource_id: $.resourceId
+retry:
+  attempts: 3
+  delay: ${{ milliseconds(5) }}
+  backoff: fixed
+  statuses: [404, 409, 500, 502, 503, 504]
+  expectation_failures: true
+```
+
+## Use The Final Captured Value
+
+```yaml
+test: use-final-resource
+requires: eventually-ready
+post: https://api.example.com/resources/use
+body:
+  resourceId: $resource_id
+mock_only: true
+mock:
+  status: 204
+expect:
+  status: 204
+```

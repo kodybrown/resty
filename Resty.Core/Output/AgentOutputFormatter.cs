@@ -80,6 +80,7 @@ public class AgentOutputFormatter : IOutputFormatter
       ["method"] = result.Test.Method,
       ["url"] = result.RequestInfo?.Url ?? result.Test.Url,
       ["status"] = result.Status.ToString().ToLowerInvariant(),
+      ["skipReason"] = result.SkipReason?.ToString().ToLowerInvariant(),
       ["durationMs"] = (long)Math.Round(result.Duration.TotalMilliseconds),
       ["statusCode"] = result.StatusCode.HasValue ? (int)result.StatusCode.Value : null,
       ["error"] = result.ErrorMessage,
