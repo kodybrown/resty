@@ -1,10 +1,20 @@
 # Agent Notes
 
-## Required Knowledge Check
+## Primary Checkout
 
-Before starting an implementation task, load the `cq` skill and follow its
-Core Protocol. Reuse, confirm, or flag relevant knowledge instead of creating
-duplicate guidance.
+- Use `C:\Users\kodyb\Projects\Resty\Resty` on `develop` as the primary
+  human and agent checkout for ordinary implementation, documentation, and
+  read-only work. `main` is the release branch.
+- Verify the actual branch and working-tree status before editing. Preserve
+  unrelated local changes. If the branch or project instructions conflict with
+  this layout, stop and ask rather than switching or stashing automatically.
+- Create task worktrees only when explicitly requested. Resolve the primary
+  checkout from Git metadata and use `<project>/worktrees/<short-name>`, based
+  on `develop`, with `feature/`, `bugfix/`, `hotfix/`, or `release/` prefixes.
+  Do not add `ai` or `codex` identifiers to new names.
+- Preserve existing branch names and worktrees. Integration, cleanup, pushing,
+  and publication require explicit authorization. Global worktree-location
+  rules take precedence; ask the user before affected writes on conflicts.
 
 ## Repository Role
 
@@ -16,14 +26,16 @@ human-readable, CI-friendly, or agent-friendly output.
 
 - Preserve unrelated user changes throughout the task.
 - Check current status before broad edits, generated output, or cleanup.
+- Commit only scoped, verified work under the user's standing authorization;
+  never include unrelated local edits.
 - Do not initialize Git, create branches, relocate worktrees, discard changes,
-  or commit unless the user explicitly requests it.
+  switch branches, integrate, or push unless the user explicitly requests it.
 - Treat files under `artifacts/`, `publish/`, `builds/`, `bin/`, and `obj/` as
   generated output.
 
 ## Canonical Synchronization
 
-The canonical source is `~\Projects\PowerCode\local`.
+The canonical source is `~\Projects\PowerCode`.
 
 Before updating Resty from the canonical source:
 
