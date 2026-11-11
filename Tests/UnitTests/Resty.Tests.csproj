@@ -55,6 +55,7 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
     <ProjectReference Include="..\..\Resty.Core\Resty.Core.csproj" />
   </ItemGroup>
 

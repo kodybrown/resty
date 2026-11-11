@@ -198,6 +198,11 @@ public record YamlBlock
   public object? Body { get; init; }
 
   /// <summary>
+  /// Parts of a multipart form request, in the order they are sent.
+  /// </summary>
+  public List<MultipartPartDefinition>? Multipart { get; init; }
+
+  /// <summary>
   /// Response capture definitions for extracting values from responses.
   /// Key = variable name, Value = JSON path or simple path to extract.
   /// </summary>

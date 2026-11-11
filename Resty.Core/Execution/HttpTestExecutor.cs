@@ -2,6 +2,7 @@ namespace Resty.Core.Execution;
 
 using System.Collections;
 using System.Net;
+using System.Net.Http.Headers;
 using System.Net.Sockets;
 using System.Text;
 using System.Text.RegularExpressions;
@@ -110,7 +111,11 @@ public class HttpTestExecutor
 
         if (response == null) {
           // Step 3.1: Create HTTP request (only if not mocked)
-          var request = CreateHttpRequest(resolvedTest);
+          using var multipart = CreateMultipartContent(test, variableStore);
+          if (multipart is not null) {
+            resolvedTest = resolvedTest with { ContentType = multipart.Headers.ContentType!.ToString() };
+          }
+          var request = CreateHttpRequest(resolvedTest, multipart);
 
           // Step 4: Execute HTTP request with timeout
           using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
@@ -773,10 +778,61 @@ public class HttpTestExecutor
     }
   }
 
+  private static MultipartFormDataContent? CreateMultipartContent( HttpTest test, VariableStore variableStore )
+  {
+    if (test.Multipart is not { } parts) {
+      return null;
+    }
+
+    var multipart = new MultipartFormDataContent();
+    try {
+      foreach (var part in parts) {
+        if (part.File is null) {
+          var value = variableStore.ResolveVariables(part.Value);
+          AddMultipartPart(multipart, new StringContent(value, Encoding.UTF8), part.Name);
+          continue;
+        }
+
+        var filePath = Path.IsPathFullyQualified(part.File)
+          ? Path.GetFullPath(part.File)
+          : Path.GetFullPath(part.File, Path.GetDirectoryName(Path.GetFullPath(test.SourceFile))!);
+        var contentType = MediaTypeHeaderValue.Parse(part.ContentType ?? "application/octet-stream");
+        FileStream stream;
+        try {
+          stream = File.OpenRead(filePath);
+        } catch (IOException ex) when (ex is FileNotFoundException or DirectoryNotFoundException) {
+          throw new FileNotFoundException($"Multipart fixture for test '{test.Name}' was not found at '{filePath}'.", filePath, ex);
+        }
+
+        var fileContent = new StreamContent(stream);
+        fileContent.Headers.ContentType = contentType;
+        AddMultipartPart(multipart, fileContent, part.Name, Path.GetFileName(filePath));
+      }
+      return multipart;
+    } catch {
+      multipart.Dispose();
+      throw;
+    }
+  }
+
+  private static void AddMultipartPart( MultipartFormDataContent multipart, HttpContent part, string name, string? fileName = null )
+  {
+    try {
+      if (fileName is null) {
+        multipart.Add(part, name);
+      } else {
+        multipart.Add(part, name, fileName);
+      }
+    } catch {
+      part.Dispose();
+      throw;
+    }
+  }
+
   /// <summary>
   /// Creates an HTTP request from the resolved test.
   /// </summary>
-  private HttpRequestMessage CreateHttpRequest( ResolvedHttpTest resolvedTest )
+  private HttpRequestMessage CreateHttpRequest( ResolvedHttpTest resolvedTest, MultipartFormDataContent? multipart )
   {
     var method = new HttpMethod(resolvedTest.Method);
     var request = new HttpRequestMessage(method, resolvedTest.Url);
@@ -784,20 +840,18 @@ public class HttpTestExecutor
     var contentType = resolvedTest.ContentType ?? "application/json";
     var authorization = resolvedTest.Authorization;
 
-    // Set the content if resolvedTest.Body is present.
-    if (!string.IsNullOrEmpty(resolvedTest.Body)) {
+    if (multipart is not null) {
+      request.Content = multipart;
+    } else if (!string.IsNullOrEmpty(resolvedTest.Body)) {
       request.Content = new StringContent(
         resolvedTest.Body,
         Encoding.UTF8,
         contentType
       );
-    }
 
-    // Add the 'Content-Type' header.
-    if (!string.IsNullOrEmpty(contentType)) {
-      if (request.Content != null) {
+      if (!string.IsNullOrEmpty(contentType)) {
         try {
-          request.Content.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue(contentType);
+          request.Content.Headers.ContentType = new MediaTypeHeaderValue(contentType);
         } catch {
           // Fallback: add without validation if parsing fails
           request.Content.Headers.TryAddWithoutValidation("Content-Type", contentType);

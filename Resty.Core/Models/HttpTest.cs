@@ -52,6 +52,11 @@ public record HttpTest
   public object? RawBody { get; init; }
 
   /// <summary>
+  /// Parts of a multipart form request, in the order they are sent.
+  /// </summary>
+  public IReadOnlyList<MultipartPartDefinition>? Multipart { get; init; }
+
+  /// <summary>
   /// Response extractors for capturing values from successful responses.
   /// Key = variable name to create, Value = JSON path or extraction expression.
   /// </summary>
@@ -153,18 +158,22 @@ public record HttpTest
     }
 
     var methodAndUrl = block.GetHttpMethodAndUrl()!;
+    if (block.Multipart is { } parts) {
+      ValidateMultipart(block, parts);
+    }
 
     var httpTest = new HttpTest {
       Name = block.Test!,
       Method = methodAndUrl?.Method ?? string.Empty,
       Url = methodAndUrl?.Url ?? string.Empty,
       Description = block.Description,
-      ContentType = block.ContentType ?? "application/json",
+      ContentType = block.Multipart is null ? block.ContentType ?? "application/json" : "multipart/form-data",
       Authorization = block.Authorization,
       Headers = block.Headers ?? new Dictionary<string, string>(),
       // If Body is a string, assign to Body; RawBody always gets the original
       Body = block.Body as string,
       RawBody = block.Body,
+      Multipart = block.Multipart,
       Extractors = block.Capture ?? new Dictionary<string, string>(),
       Expect = block.Expect,
       SourceFile = sourceFile,
@@ -182,5 +191,27 @@ public record HttpTest
     }
 
     return httpTest;
+  }
+
+  private static void ValidateMultipart( YamlBlock block, IReadOnlyList<MultipartPartDefinition> parts )
+  {
+    if (block.Body is not null || block.ContentType is not null) {
+      throw new InvalidOperationException("multipart cannot be combined with body or a request-level Content-Type header.");
+    }
+    if (parts.Count == 0) {
+      throw new InvalidOperationException("multipart must contain at least one part.");
+    }
+
+    foreach (var part in parts) {
+      if (part is null || string.IsNullOrWhiteSpace(part.Name)) {
+        throw new InvalidOperationException("Each multipart part must have a name.");
+      }
+      if ((part.Value is null) == (part.File is null) || (part.File is not null && string.IsNullOrWhiteSpace(part.File))) {
+        throw new InvalidOperationException($"Multipart part '{part.Name}' must specify either a value or a nonempty file path.");
+      }
+      if (part.Value is not null && part.ContentType is not null) {
+        throw new InvalidOperationException($"Multipart part '{part.Name}' can specify content_type only for a file.");
+      }
+    }
   }
 }

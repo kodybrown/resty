@@ -481,6 +481,85 @@ headers:
 body: 'username=$username&password=$password'
 ```
 
+### Multipart Form Uploads
+
+Use `multipart` as an ordered list of parts. Each part has a `name` and either
+a `value` for a UTF-8 text field or a `file` path for a binary upload. Text
+values support captured variables and expressions, including an empty string
+written as `value: ""`. Use multiple entries with the same name when the API
+expects repeated fields or files.
+
+Relative paths resolve from the `.resty` or `.rest` file declaring the upload,
+including when that file is included by another suite. Resty sends the file's
+basename and original bytes. File parts accept an optional `content_type`,
+which defaults to `application/octet-stream`. A missing fixture fails the test
+before sending the request and reports the test name and resolved path.
+
+Resty generates the multipart boundary and request `Content-Type` together.
+Use `multipart` without `body` or a request-level `Content-Type` header.
+
+#### Upload a document with a text field
+
+The `create_record` test supplies `$record_id`. The upload captures the new
+attachment ID for follow-up tests. In these examples, `$host` is the API base
+URL and `$access_token` is the bearer token supplied by the suite.
+
+```yaml
+test: upload_attachment
+requires: create_record
+post: $host/api/attachments
+headers:
+  Authorization: Bearer $access_token
+multipart:
+  - name: RecordId
+    value: $record_id
+  - name: Attachment
+    file: fixtures/sample.pdf
+    content_type: application/pdf
+expect:
+  status: 200
+capture:
+  attachment_id: $.result.id
+```
+
+```yaml
+test: download_attachment
+requires: upload_attachment
+get: $host/api/attachments/$attachment_id/download
+headers:
+  Authorization: Bearer $access_token
+expect:
+  status: 200
+```
+
+#### Upload and retrieve a profile photo
+
+The `create_test_member` test supplies `$member_id` for both requests.
+
+```yaml
+test: upload_member_photo
+requires: create_test_member
+post: $host/api/members/$member_id/photo
+headers:
+  Authorization: Bearer $access_token
+multipart:
+  - name: file
+    file: fixtures/profile.png
+    content_type: image/png
+expect:
+  status: 200
+```
+
+```yaml
+test: get_member_photo
+requires: upload_member_photo
+get: $host/api/members/$member_id/photo
+headers:
+  Authorization: Bearer $access_token
+expect:
+  status: 200
+```
+
 ### JSONPath Examples
 
 ```yaml
