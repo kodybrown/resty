@@ -18,13 +18,13 @@
 
   <PropertyGroup>
     <!-- Package/product version (SemVer). -->
-    <Version>0.3.2509.22</Version>
+    <Version>0.4.2611.1114</Version>
     <!-- Assembly binding version: keep stable; bump only on breaking changes. -->
-    <AssemblyVersion>0.3.2509.22</AssemblyVersion>
+    <AssemblyVersion>0.4.2611.1114</AssemblyVersion>
     <!-- Win32 file version (4-part). Usually matches Version numerically. -->
-    <FileVersion>0.3.2509.22</FileVersion>
+    <FileVersion>0.4.2611.1114</FileVersion>
     <!-- Human-readable version (can include pre-release/build metadata). -->
-    <InformationalVersion>0.3.2509.22+$(SourceRevisionId)</InformationalVersion>
+    <InformationalVersion>0.4.2611.1114+$(SourceRevisionId)</InformationalVersion>
   </PropertyGroup>
 
   <!-- Publish Settings -->
