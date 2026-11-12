@@ -17,9 +17,9 @@
   </PropertyGroup>
 
   <PropertyGroup>
-    <!-- Package/product version (SemVer). -->
+    <!-- Package/product version in major.minor.yyMM.ddHH format. -->
     <Version>0.4.2611.1114</Version>
-    <!-- Assembly binding version: keep stable; bump only on breaking changes. -->
+    <!-- Assembly binding version reported by the CLI version command and in agent output. -->
     <AssemblyVersion>0.4.2611.1114</AssemblyVersion>
     <!-- Win32 file version (4-part). Usually matches Version numerically. -->
     <FileVersion>0.4.2611.1114</FileVersion>

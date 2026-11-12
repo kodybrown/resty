@@ -1,5 +1,6 @@
 # Git Flow Release
 
+# Date-stamped versions use major.minor.yyMM.ddHH with a 24-hour clock.
 # variable: "${version}" = 0.4.2611.1114
 # variable: "${main_branch}" = main
 # variable: "${dev_branch}" = develop

@@ -16,7 +16,7 @@
   </PropertyGroup>
 
   <PropertyGroup>
-    <!-- Package/product version (SemVer). -->
+    <!-- Package/product version in major.minor.yyMM.ddHH format. -->
     <Version>0.4.2611.1114</Version>
     <!-- Assembly binding version: keep stable; bump only on breaking changes. -->
     <AssemblyVersion>0.4.2611.1114</AssemblyVersion>
