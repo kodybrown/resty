@@ -61,13 +61,33 @@ endif
 READY_TO_RUN := true
 PUBLISH_SELF_CONTAINED := true
 PUBLISH_SINGLE_FILE := true
-PUBLISH_DIR := $(REPO_ROOT)artifacts/publish/$(RID)
 PUBLISH_ARGS := -p:PublishTrimmed=false
 ARGS :=
 
+# Preserve explicit output overrides subject to the local MSBuild policy.
+ifeq ($(origin PUBLISH_DIR),command line)
+override PUBLISH_ARGS += -p:PublishDir="$(PUBLISH_DIR)"
+endif
+
+# The SDK can return a path relative to the project when no policy is loaded.
+define read-publish-dir
+publish_dir=$$($(DOTNET) msbuild "$(PUBLISH_PROJECT)" -nologo \
+	-p:Configuration="$(PUBLISH_CONFIGURATION)" -p:RuntimeIdentifier="$(RID)" \
+	-p:SelfContained="$(PUBLISH_SELF_CONTAINED)" -p:PublishSingleFile="$(PUBLISH_SINGLE_FILE)" \
+	-p:PublishReadyToRun="$(READY_TO_RUN)" $(filter-out --no-build --no-restore,$(PUBLISH_ARGS)) \
+	-getProperty:PublishDir) || { printf '%s\n' "$$publish_dir" >&2; exit 1; }; \
+publish_dir=$$(printf '%s' "$$publish_dir" | tr -d '\r' | tr '\134' '/'); \
+test -n "$$publish_dir" || { echo 'ERROR: MSBuild returned an empty PublishDir.' >&2; exit 1; }; \
+case "$$publish_dir" in \
+	/*|[A-Za-z]:/*) ;; \
+	*) publish_dir="$$(dirname "$(PUBLISH_PROJECT)")/$$publish_dir" ;; \
+esac; \
+publish_dir=$${publish_dir%/}
+endef
+
 PACKAGE_DIR := $(REPO_ROOT)artifacts/packages
 PACKAGE_FILE := $(PACKAGE_DIR)/$(PROJECT_NAME)-$(RID).zip
-PUBLISHED_BINARY := $(PUBLISH_DIR)/resty$(EXE_SUFFIX)
+PUBLISHED_BINARY = $$publish_dir/resty$(EXE_SUFFIX)
 PREFIX ?= /usr/local
 DESTDIR ?=
 INSTALL_BINDIR := $(DESTDIR)$(PREFIX)/bin
@@ -106,7 +126,7 @@ verify: test
 
 package: publish
 	@$(MAKE_DIR) "$(PACKAGE_DIR)"
-	@$(ZIP_DIR) "$(PUBLISH_DIR)" "$(PACKAGE_FILE)"
+	@$(read-publish-dir) && $(ZIP_DIR) "$$publish_dir" "$(PACKAGE_FILE)"
 	@echo "Package ready: $(PACKAGE_FILE)"
 
 ifeq ($(OS),Windows_NT)
@@ -116,7 +136,7 @@ install:
 
 install-user: publish
 	@$(MAKE_DIR) "$(USER_BIN)"
-	@$(CP_FILE) "$(PUBLISHED_BINARY)" "$(USER_INSTALL_PATH)"
+	@$(read-publish-dir) && $(CP_FILE) "$(PUBLISHED_BINARY)" "$(USER_INSTALL_PATH)"
 	@echo "[install-user] => $(USER_INSTALL_PATH)"
 
 uninstall:
@@ -126,7 +146,7 @@ else
 
 install: publish
 	@$(MAKE_DIR) "$(INSTALL_BINDIR)"
-	@$(CP_FILE) "$(PUBLISHED_BINARY)" "$(INSTALL_PATH)"
+	@$(read-publish-dir) && $(CP_FILE) "$(PUBLISHED_BINARY)" "$(INSTALL_PATH)"
 	@chmod 0755 "$(INSTALL_PATH)"
 	@echo "[install] => $(INSTALL_PATH)"
 

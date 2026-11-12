@@ -2,6 +2,19 @@
 
 Resty provides multiple build scripts for different platforms and preferences.
 
+## Publish and package with Make
+
+```powershell
+make publish RID=win-x64
+make package RID=win-x64
+```
+
+`make publish` lets MSBuild choose the publish directory and prints the path.
+This respects external output paths set in `Directory.Build.props`. Without
+custom settings, the .NET SDK uses the project's build output directory.
+`make package` writes the archive under `artifacts/packages/`, and
+`make install-user` uses the executable from the same publish directory.
+
 ## Linux Makefile
 
 For Linux, the simplest install path is the repo-level Makefile:
@@ -124,8 +137,7 @@ dotnet publish Resty.Cli/Resty.Cli.csproj \
   -r win-x64 \
   --self-contained true \
   /p:PublishSingleFile=true \
-  /p:PublishTrimmed=false \
-  -o ./publish
+  /p:PublishTrimmed=false
 ```
 
 Replace `win-x64` with your target runtime identifier.

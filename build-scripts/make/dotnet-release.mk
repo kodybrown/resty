@@ -8,6 +8,6 @@ CANONICAL_DOTNET_RELEASE_MK_INCLUDED := 1
 
 release: verify
 	$(MAKE) publish
-	@echo "Release directory ready: $(PUBLISH_DIR)"
+	@echo "Release output is ready in the evaluated MSBuild PublishDir."
 
 endif
